@@ -62,6 +62,11 @@ rollout:
   max_concurrent_lobbies: 32
   seed: 0
 
+tracing:                        # MLflow traces: one per game, one span per LLM call
+  enabled: true
+  lobbies_per_epoch: 2          # only trace this many games per traced epoch (keeps overhead low)
+  every_n_epochs: 1
+
 paths:
   adapter_dir: ./adapters
 

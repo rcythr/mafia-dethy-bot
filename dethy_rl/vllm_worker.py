@@ -5,6 +5,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
+from dethy_rl.tracing import span
+
 
 class VllmVoteLogitsProcessor:
     """Per-request logits processor: -inf everywhere except the allowed single-token IDs."""
@@ -28,6 +30,7 @@ class AgentRequest:
     prompt_ids: List[int]
     phase: str                      # "night" | "dialogue" | "vote" | "think"
     allowed_players: List[int] = field(default_factory=list)
+    trace: bool = False             # record this call as an MLflow LLM span
 
 
 @dataclass
@@ -102,6 +105,20 @@ class VllmWorker:
         return SamplingParams(max_tokens=1, allowed_token_ids=allowed, **common), allowed
 
     async def _generate_one(self, req: AgentRequest) -> AgentResponse:
+        with span(f"{req.phase}_player_{req.player_id}", "LLM", req.trace) as sp:
+            resp = await self._generate(req)
+            if sp is not None:
+                sp.set_inputs({"prompt": self.tokenizer.decode(req.prompt_ids)})
+                sp.set_outputs({"text": resp.text})
+                sp.set_attributes({
+                    "player_id": req.player_id, "phase": req.phase,
+                    "prompt_tokens": len(req.prompt_ids), "action_ids": resp.action_ids,
+                    "log_probs": resp.old_log_probs,
+                    "lora": self.lora_request.lora_name if self.lora_request else "base",
+                })
+        return resp
+
+    async def _generate(self, req: AgentRequest) -> AgentResponse:
         params, allowed = self._sampling_params(req)
         final = None
         async for out in self.engine.generate(
