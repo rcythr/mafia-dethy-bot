@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Dict, List
 
 import mlflow
+from omegaconf import OmegaConf
 import torch
 import torch.nn.functional as F
 
@@ -116,7 +117,12 @@ async def run_training(cfg) -> None:
 
     mlflow.set_tracking_uri(cfg.experiment.tracking_uri)
     mlflow.set_experiment(cfg.experiment.name)
-    with mlflow.start_run():
+    with mlflow.start_run(run_name=cfg.experiment.get("run_name")):
+        # Log the fully resolved Hydra config as params and as a reproducible artifact.
+        flat = OmegaConf.to_container(cfg, resolve=True)
+        mlflow.log_dict(flat, "config.yaml")
+        mlflow.log_params({f"{sec}.{k}": v for sec, d in flat.items() if isinstance(d, dict)
+                           for k, v in d.items() if sec != "hydra"})
         for epoch in range(cfg.training.epochs):
             batch = await collect_trajectories(worker, cfg)
             steps = batch["steps"]
@@ -131,6 +137,8 @@ async def run_training(cfg) -> None:
             path = os.path.join(cfg.paths.adapter_dir, f"epoch_{epoch}")
             agent.save_adapter(path)
             worker.set_lora(path, lora_id=epoch + 1)
+            if (epoch + 1) % cfg.training.get("artifact_every", 10) == 0:
+                mlflow.log_artifacts(path, artifact_path=f"adapters/epoch_{epoch}")
             del steps, batch
             gc.collect()
             torch.cuda.empty_cache()
