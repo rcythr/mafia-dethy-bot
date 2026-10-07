@@ -215,7 +215,7 @@ class DethyEnv:
         for p in self.alive:  # invalid votes get a random valid vote
             valid.setdefault(p, self.rng.choice(self.allowed_targets(p)))
         self.transcript.append(
-            f"Day {self.day} votes: " + ", ".join(f"Player_{p}->Player_{v}" for p, v in sorted(valid.items()))
+            f"Votes:\n" + "\n".join(f"Player_{p} voted for Player_{v}" for p, v in sorted(valid.items()))
         )
         counts = Counter(valid.values())
         mafia = self.mafia_id
