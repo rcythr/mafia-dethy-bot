@@ -190,12 +190,17 @@ async def run_training(cfg) -> None:
             for group in optimizer.param_groups:
                 group["lr"] = lr
             trace = cfg.tracing.enabled and epoch % cfg.tracing.every_n_epochs == 0
+            t_a = time.time()
             batch = await collect_trajectories(worker, cfg, trace=trace, epoch=epoch)
             steps = batch["steps"]
+            t_b = time.time()
             adv_stats = annotate_advantages(agent, steps, cfg)
+            t_c = time.time()
             warmup = epoch < cfg.training.value_warmup_epochs  # fit the critic before trusting its advantages
             stats = ppo_update(agent, optimizer, steps, cfg, train_policy=not warmup)
-            stats.update(adv_stats, learning_rate=lr)
+            t_d = time.time()
+            stats.update(adv_stats, learning_rate=lr, sec_rollout=t_b - t_a, sec_annotate=t_c - t_b,
+                         sec_update=t_d - t_c, num_steps=len(steps))
             stats.update({k: batch[k] for k in (
                 "avg_episode_reward", "town_win_rate", "vote_mafia_rate_sane",
                 "vote_mafia_rate_other_cops", "vote_nolynch_rate", "avg_dialogue_tokens",
