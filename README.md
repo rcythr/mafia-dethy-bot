@@ -112,7 +112,7 @@ Rewards are credited to the player's most recent decision (a night kill lands on
 
 **Vote masking and log-probs**
 - The mask is applied during sampling, so `old_log_probs` must describe the *masked* distribution. The config requests `logprobs_mode: processed_logprobs` and training applies the same alive-digit mask to the logits (`masked_vote_logprobs`). If these disagree, vote ratios won't start near 1.
-- Default `vote_mask_mode: logits_processor` uses vLLM's V0-style per-request callable. On engines without it, use `allowed_token_ids`.
+- Default `vote_mask_mode: allowed_token_ids` uses vLLM's built-in masking, which works on the V1 engine. `logits_processor` (our `VllmVoteLogitsProcessor`, a per-request callable) only works on the old V0 engine, so set `VLLM_USE_V1=0` yourself if you want it; current vLLM rejects it with `Unexpected keyword argument 'logits_processors'`.
 
 **Learning aids**
 - **Critic warm-up:** the first 2 epochs train only the value head, so early policy updates aren't driven by garbage advantages.

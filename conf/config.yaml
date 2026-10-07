@@ -52,7 +52,7 @@ vllm:
   gpu_memory_utilization: 0.3   # fraction of GPU memory vLLM reserves; the trainer uses the rest
   max_num_seqs: 64
   enforce_eager: true
-  vote_mask_mode: logits_processor  # or "allowed_token_ids" (works on vLLM V1)
+  vote_mask_mode: allowed_token_ids  # vLLM V1 (default engine). "logits_processor" only works on the old V0 engine (VLLM_USE_V1=0)
   logprobs_mode: processed_logprobs # logprobs must match the masked sampling distribution
 
 rollout:

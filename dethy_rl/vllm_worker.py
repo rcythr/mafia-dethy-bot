@@ -5,9 +5,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
-# vLLM V0 supports per-request callable logits processors; V1 does not (use allowed_token_ids there).
-os.environ.setdefault("VLLM_USE_V1", "0")
-
 
 class VllmVoteLogitsProcessor:
     """Per-request logits processor: -inf everywhere except the allowed single-token IDs."""
