@@ -45,7 +45,7 @@ def check_invariants(env):
     assert len(prefixes) == 1, "everything before the private line must be identical for all players"
     for p, pr in prompts.items():
         head, tail = pr.rsplit(marker, 1)
-        assert tail.startswith(f"{p}.\nPrivate Role: {env.roles[p]}.")      # transcript -> role -> phase
+        assert tail.startswith(f"{p}.\n\nPrivate Role: {env.roles[p]}.")      # transcript -> role -> phase
         assert tail.rstrip().endswith("Action:")
         assert "\nPhase:" in tail and tail.index("Private Role") < tail.index("\nPhase:")
         for q in env.alive:

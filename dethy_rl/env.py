@@ -82,7 +82,7 @@ class DethyEnv:
         self.num_rounds = 0
         self.round = 0
         self.speakers: List[int] = []
-        self.transcript.append(f"\n=== Night {self.day} ===")
+        self.transcript.append(f"\n=== Night {self.day} ===\n")
 
     @property
     def mafia_id(self) -> int:
@@ -120,9 +120,9 @@ class DethyEnv:
         # public and identical for every player, so the prefix cache still covers it
         head = (f"{self.public_transcript()}\n\nAlive players: "
                 + ", ".join(f"Player_{p}" for p in self.alive) + ".")
-        role = f"\nYou are Player_{player_id}.\nPrivate Role: {self.roles[player_id]}."
+        role = f"\nYou are Player_{player_id}.\n\nPrivate Role: {self.roles[player_id]}."
         if self.private_notes[player_id]:
-            role += "\nPrivate Notes:\n" + "\n".join(f"- {n}" for n in self.private_notes[player_id])
+            role += "\n\nPrivate Notes:\n\n" + "\n".join(f"- {n}" for n in self.private_notes[player_id])
         if self.phase == "night":
             verb = "kill" if self.roles[player_id] == "Mafia" else "investigate"
             phase = f"Night {self.day} (answer with the ID of the player to {verb})"
@@ -131,9 +131,9 @@ class DethyEnv:
         else:
             phase = f"Day {self.day} Vote (answer with the ID of the player to eliminate)"
         if think:  # private reasoning stage; the decision stage re-uses this prompt as its prefix
-            return (f"{head}\n{role}\nPhase: {phase}.\n"
-                    "First think privately about who is the Mafia, then stop.\nThoughts:")
-        return f"{head}\n{role}\nPhase: {phase}.\nAction:"
+            return (f"{head}\n{role}\n\nPhase: {phase}.\n\n"
+                    "First think privately about who is the Mafia, then stop.\n\nThoughts:")
+        return f"{head}\n{role}\n\nPhase: {phase}.\n\nAction:"
 
     # --------------------------------------------------------------- helpers
     def _sanity_result(self, sanity: str, target: int) -> bool:
@@ -154,14 +154,14 @@ class DethyEnv:
     def _begin_day(self) -> None:
         self.num_rounds = self.rng.randint(self.min_rounds, self.max_rounds)
         self.transcript.append(f"\n=== Day {self.day}: Discussion ({self.num_rounds} round"
-                               f"{'s' if self.num_rounds > 1 else ''}) ===")
+                               f"{'s' if self.num_rounds > 1 else ''}) ===\n")
         self.round = 0
         self.phase = "dialogue"
         self._next_round()
 
     def _next_round(self) -> None:
         self.round += 1
-        self.transcript.append(f"\n-- Round {self.round} of {self.num_rounds} --")
+        self.transcript.append(("\n" if self.round > 1 else "") + f"-- Round {self.round} of {self.num_rounds} --")
         self.speakers = self.alive[:]
         self.rng.shuffle(self.speakers)  # fresh random speaking order every round
 
@@ -186,7 +186,7 @@ class DethyEnv:
         if victim not in self.alive or victim == mafia:
             victim = self.rng.choice([p for p in self.alive if p != mafia])
         self.alive.remove(victim)
-        self.transcript.append(f"\nPlayer_{victim} was killed in the night by the Mafia and is out of the game.")
+        self.transcript.append(f"Player_{victim} was killed in the night by the Mafia and is out of the game.")
         if len(self.alive) <= 2:
             self.transcript.append("\nOnly 2 players are left. The Mafia wins!")
             self.done, self.winner = True, "Mafia"
@@ -206,7 +206,7 @@ class DethyEnv:
                 self._next_round()
             else:
                 self.phase = "vote"
-                self.transcript.append(f"\n=== Day {self.day}: Vote ===")
+                self.transcript.append(f"\n=== Day {self.day}: Vote ===\n")
 
     def step_vote(self, votes: Dict[int, int]) -> Tuple[Dict[int, float], bool]:
         """Returns (per-player rewards, game_over)."""
@@ -248,5 +248,5 @@ class DethyEnv:
         self._team(r, -self.rw.lynch_town, self.rw.lynch_town)
         self.day += 1
         self.phase = "night"
-        self.transcript.append(f"\n=== Night {self.day} ===")
+        self.transcript.append(f"\n=== Night {self.day} ===\n")
         return dict(r), False
