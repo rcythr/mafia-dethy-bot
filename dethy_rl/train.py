@@ -14,6 +14,7 @@ from omegaconf import OmegaConf
 import torch
 import torch.nn.functional as F
 
+from dethy_rl.checkpoint import find_latest_checkpoint, load_checkpoint, save_checkpoint
 from dethy_rl.rollout import collect_trajectories
 
 
@@ -138,6 +139,14 @@ def ppo_update(agent, optimizer, steps: List[Dict], cfg, train_policy: bool = Tr
     return {k: v / max(n, 1) for k, v in sums.items()}
 
 
+def _safe(fn, *args, **kwargs) -> None:
+    """MLflow logging must never kill an unattended run (e.g. tracking server briefly down)."""
+    try:
+        fn(*args, **kwargs)
+    except Exception as e:  # noqa: BLE001
+        print(f"warning: MLflow call {getattr(fn, '__name__', fn)} failed: {e}")
+
+
 async def run_training(cfg) -> None:
     from dethy_rl.agent import DethyAgent
     from dethy_rl.vllm_worker import VllmWorker
@@ -150,18 +159,32 @@ async def run_training(cfg) -> None:
     print(f"startup: vLLM engine {t1 - t0:.0f}s, PyTorch trainer {time.time() - t1:.0f}s")
     optimizer = torch.optim.AdamW(agent.trainable_parameters(), lr=cfg.training.learning_rate)
 
+    # Each run writes to its own adapter dir; resume by pointing training.resume_from at it.
+    adapter_dir = cfg.training.resume_from or cfg.paths.adapter_dir
+    start_epoch, run_id = 0, None
+    if cfg.training.resume_from:
+        ckpt = find_latest_checkpoint(adapter_dir)
+        if ckpt is None:
+            raise SystemExit(f"No complete checkpoint found in {adapter_dir}")
+        last_epoch, ckpt_path, state = ckpt
+        load_checkpoint(agent, optimizer, ckpt_path)
+        worker.set_lora(ckpt_path, lora_id=last_epoch + 1)
+        start_epoch, run_id = last_epoch + 1, state.get("run_id")
+        print(f"Resuming from {ckpt_path}: continuing at epoch {start_epoch}")
+    print(f"Checkpoints: {adapter_dir}   (resume with: training.resume_from={adapter_dir})")
+
     # GB10 (unified memory) reports GPU memory/power as 'Not Supported'; utilisation still works
     logging.getLogger("mlflow.system_metrics.metrics.gpu_monitor").setLevel(logging.ERROR)
     mlflow.set_tracking_uri(cfg.experiment.tracking_uri)
     mlflow.set_experiment(cfg.experiment.name)
-    with mlflow.start_run(run_name=cfg.experiment.get("run_name"),
-                          log_system_metrics=cfg.experiment.get("system_metrics", True)):
-        # Log the fully resolved Hydra config as params and as a reproducible artifact.
-        flat = OmegaConf.to_container(cfg, resolve=True)
-        mlflow.log_dict(flat, "config.yaml")
-        mlflow.log_params({f"{sec}.{k}": v for sec, d in flat.items() if isinstance(d, dict)
-                           for k, v in d.items() if sec != "hydra"})
-        for epoch in range(cfg.training.epochs):
+    with mlflow.start_run(run_id=run_id, run_name=None if run_id else cfg.experiment.get("run_name"),
+                          log_system_metrics=cfg.experiment.get("system_metrics", True)) as run:
+        if run_id is None:  # fresh run: record the resolved config (a resumed run keeps its original)
+            flat = OmegaConf.to_container(cfg, resolve=True)
+            _safe(mlflow.log_dict, flat, "config.yaml")
+            _safe(mlflow.log_params, {f"{sec}.{k}": v for sec, d in flat.items() if isinstance(d, dict)
+                                      for k, v in d.items() if sec != "hydra"})
+        for epoch in range(start_epoch, cfg.training.epochs):
             lr = lr_at(epoch, cfg)
             for group in optimizer.param_groups:
                 group["lr"] = lr
@@ -175,17 +198,18 @@ async def run_training(cfg) -> None:
             stats.update({k: batch[k] for k in (
                 "avg_episode_reward", "town_win_rate", "vote_mafia_rate_sane",
                 "vote_mafia_rate_other_cops", "avg_dialogue_tokens", "avg_think_tokens")}, avg_steps_per_game=batch["avg_game_len"])
-            mlflow.log_metrics(stats, step=epoch)
+            _safe(mlflow.log_metrics, stats, step=epoch)
             if epoch % cfg.training.get("transcript_every", 1) == 0:  # read these to see what the agents do
-                mlflow.log_text("\n\n=====\n\n".join(batch["sample_transcripts"]), f"transcripts/epoch_{epoch}.txt")
+                _safe(mlflow.log_text, "\n\n=====\n\n".join(batch["sample_transcripts"]),
+                      f"transcripts/epoch_{epoch}.txt")
             print(f"epoch {epoch}: " + " ".join(f"{k}={v:.4f}" for k, v in stats.items()))
 
             # Weight sync: save LoRA adapter, hand vLLM a new adapter id for the next rollout.
-            path = os.path.join(cfg.paths.adapter_dir, f"epoch_{epoch}")
-            agent.save_adapter(path)
+            path = os.path.join(adapter_dir, f"epoch_{epoch}")
+            save_checkpoint(agent, optimizer, path, epoch, run.info.run_id)
             worker.set_lora(path, lora_id=epoch + 1)
             if (epoch + 1) % cfg.training.get("artifact_every", 10) == 0:
-                mlflow.log_artifacts(path, artifact_path=f"adapters/epoch_{epoch}")
+                _safe(mlflow.log_artifacts, path, artifact_path=f"adapters/epoch_{epoch}")
             del steps, batch
             gc.collect()
             torch.cuda.empty_cache()

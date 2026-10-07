@@ -48,10 +48,21 @@ python main.py                                   # train with defaults
 python main.py training.epochs=10 env.think_tokens=128   # Hydra overrides
 mlflow ui --backend-store-uri ./mlruns           # view runs
 python tests/test_rollout_env.py && python tests/test_train_logic.py   # no GPU needed
+python tests/test_checkpoint.py && python tests/test_resume_loop.py     # resume tests (need peft, transformers, hydra, mlflow)
 python tests/test_prompt.py [--out prompts.txt] [--model <hf-name>]    # check and print example prompts
 ```
 
 Everything runs in bf16 (no quantisation). The target is a DGX Spark (128 GB unified memory); `vllm.gpu_memory_utilization` (default 0.3) is the share vLLM reserves and the trainer uses the rest. For a fast smoke test on a smaller GPU, use a smaller model: `model.name=meta-llama/Llama-3.2-1B-Instruct`.
+
+## Resuming a run
+
+Every epoch saves a checkpoint (LoRA adapter, value head, optimizer state) to `adapters/<timestamp>/epoch_N/`; the run prints that directory at startup. If a run dies, continue it with:
+
+```bash
+python main.py <same overrides> training.resume_from=adapters/<timestamp>
+```
+
+It reloads the newest *complete* checkpoint (a crash mid-save is ignored), points vLLM at that adapter, continues at the next epoch with the LR schedule intact, and keeps logging to the same MLflow run. Games for each epoch are seeded from the epoch number, so a resumed run plays fresh games. MLflow logging failures (e.g. the tracking server being briefly unreachable) print a warning and do not stop training.
 
 ## How it works
 
