@@ -32,7 +32,7 @@ WHAT YOU SEE
 - That line shows your Private Role and your Private Notes (your own investigation results). Only you can see them.
 
 HOW TO PLAY
-- Cops: use your investigation results, but remember your own sanity when you interpret them (for example, an Insane Cop who sees "Not Mafia" should suspect the target). Share useful information, question inconsistent claims, and vote for who you believe is the Mafia.
+- Cops: use your investigation results, but remember your own sanity when you interpret them (for example, an Insane Cop who sees "Not Mafia" should suspect the target). Share useful information, question inconsistent claims, and vote for who you believe is the Mafia. You cannot vote for, investigate or kill yourself.
 - Mafia: stay alive. Blend in, cast suspicion on others, and kill players who might expose you.
 
 EXAMPLE (placeholder names, only an illustration of the style: do not repeat its wording, and base what you say on your own game)
@@ -40,8 +40,8 @@ Cop X is Sane and privately saw "Mafia" when investigating Z. During discussion 
 Another Cop, W, is Insane and saw "Not Mafia" for V. Because Insane results are reversed, W privately concludes V is probably the Mafia, and may say V has seemed evasive without revealing the result. A Naive or Paranoid Cop knows their results are meaningless, so they should rely on what others say and may bluff.
 
 HOW TO ANSWER
-- Night and Vote phases: answer with a single digit, the ID of a living player (for example: 3). Nothing else.
-- Discussion phase: write one or two short sentences as yourself. Do not write your own name or "Player_N:" at the start.
+- Night and Vote phases: answer with a single digit, the ID of a living player other than yourself (for example: 3). Nothing else.
+- Discussion phase: write one or two short sentences (about 40 words at most) as yourself. Do not write your own name or "Player_N:" at the start.
 - Discussion is only talking. Nobody investigates or kills during the day: investigations and kills happen at night, and the day ends with a vote. Use the discussion to say who you suspect and why, to defend yourself, or to share (truthfully or not) what your investigations showed. Do not ask others to investigate.
 """
 
@@ -97,9 +97,7 @@ class DethyEnv:
         return list(self.alive)
 
     def allowed_targets(self, player_id: int) -> List[int]:
-        if self.phase == "night" and self.roles[player_id] == "Mafia":
-            return [p for p in self.alive if p != player_id]
-        return list(self.alive)
+        return [p for p in self.alive if p != player_id]  # never yourself, for kills, checks or votes
 
     # ---------------------------------------------------------------- prompts
     def public_transcript(self) -> str:
@@ -177,8 +175,8 @@ class DethyEnv:
             if pid == mafia:
                 continue
             t = targets.get(pid)
-            if t not in self.alive:
-                t = self.rng.choice(self.alive)
+            if t not in self.alive or t == pid:
+                t = self.rng.choice(self.allowed_targets(pid))
             seen = "Mafia" if self._sanity_result(self.roles[pid], t) else "Not Mafia"
             self.private_notes[pid].append(f"Night {self.day}: you investigated Player_{t}: {seen}.")
             if t == mafia:
@@ -213,9 +211,9 @@ class DethyEnv:
     def step_vote(self, votes: Dict[int, int]) -> Tuple[Dict[int, float], bool]:
         """Returns (per-player rewards, game_over)."""
         assert self.phase == "vote"
-        valid = {p: v for p, v in votes.items() if p in self.alive and v in self.alive}
+        valid = {p: v for p, v in votes.items() if p in self.alive and v in self.alive and v != p}
         for p in self.alive:  # invalid votes get a random valid vote
-            valid.setdefault(p, self.rng.choice(self.alive))
+            valid.setdefault(p, self.rng.choice(self.allowed_targets(p)))
         self.transcript.append(
             f"Day {self.day} votes: " + ", ".join(f"Player_{p}->Player_{v}" for p, v in sorted(valid.items()))
         )

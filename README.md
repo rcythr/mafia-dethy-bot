@@ -134,7 +134,7 @@ Rewards are credited to the player's most recent decision (a night kill lands on
 
 **Game design**
 - Added the **Mafia night kill** and **1-3 sequential dialogue rounds with shuffled order** after the first version, so discussion has back-and-forth and the Mafia has agency.
-- Cops may target themselves for investigation, and anyone may vote for themselves; this follows "alive players" in the spec literally.
+- Players cannot target themselves (kill, investigate or vote). The spec said "alive players", but early transcripts showed half the votes going to the voter themselves, which wastes the signal.
 - A lynch/kill that causes parity pays only the parity reward, not also the -0.2/+0.2 term.
 - The individual Cop terms use hidden information a Cop doesn't have. They're small shaping; zero them if agents start gaming them.
 
