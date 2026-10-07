@@ -26,7 +26,7 @@ class DethyAgent(nn.Module):
             target_modules=targets, task_type="CAUSAL_LM",
         )
         self.policy_net = get_peft_model(base, lora)
-        hidden = base.config.hidden_size
+        hidden = base.config.get_text_config().hidden_size  # multimodal configs keep it under text_config
         # fp32 (bf16 AdamW updates at lr 1e-4 barely move the weights); zero-init => V=0 at start
         self.value_head = nn.Linear(hidden, 1, dtype=torch.float32).to(base.device)
         nn.init.zeros_(self.value_head.weight)
