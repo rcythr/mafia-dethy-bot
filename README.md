@@ -62,6 +62,8 @@ Each epoch:
 
 ### Prompts
 
+Prompts go through the model's **chat template** (`model.use_chat_template`): the rules are the system message and everything below is one user message. The date the Llama template embeds is pinned so the prefix stays identical across runs. Set it to false to feed raw text.
+
 ```
 [shared public transcript, starting with the full rules]
 Alive players: Player_0, ...

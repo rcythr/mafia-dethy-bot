@@ -68,7 +68,7 @@ class DethyEnv:
         self.rng.shuffle(roles)
         self.roles: Dict[int, str] = {i: r for i, r in enumerate(roles)}
         self.alive: List[int] = list(range(len(roles)))
-        self.transcript: List[str] = [RULES]
+        self.transcript: List[str] = []  # public events only; RULES is sent separately
         self.private_notes: Dict[int, List[str]] = {i: [] for i in self.roles}
         self.day = 1
         self.phase = "night"
@@ -98,9 +98,18 @@ class DethyEnv:
 
     # ---------------------------------------------------------------- prompts
     def public_transcript(self) -> str:
-        return "\n".join(self.transcript)
+        return "\n".join(self.transcript).strip("\n")
+
+    def build_messages(self, player_id: int, think: bool = False) -> List[Dict[str, str]]:
+        """Chat form: the rules are the system message, the rest is one user message."""
+        return [{"role": "system", "content": RULES.strip()},
+                {"role": "user", "content": self.user_text(player_id, think)}]
 
     def build_prompt(self, player_id: int, think: bool = False) -> str:
+        """Raw-text form (no chat template): rules followed by the user text."""
+        return f"{RULES}\n{self.user_text(player_id, think)}"
+
+    def user_text(self, player_id: int, think: bool = False) -> str:
         """[Shared Public Transcript] + \\nPrivate Role: [Role]. Phase: [Phase]. Action:
 
         The transcript is byte-identical across agents so vLLM can reuse the prefix KV cache.

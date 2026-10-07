@@ -36,16 +36,16 @@ async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore, trace: b
         while not env.done:
             phase = env.phase
             pids = env.acting_players()
-            base_ids = {pid: worker.encode(env.build_prompt(pid)) for pid in pids}
+            base_ids = {pid: worker.prompt_ids(env, pid) for pid in pids}
             if think and phase in ("night", "vote"):
                 # Stage 1: private reasoning (trained like any other action). Stage 2's prompt extends
                 # stage 1's ids exactly, so training sees what the policy saw and the prefix cache hits.
-                treqs = [AgentRequest(pid, worker.encode(env.build_prompt(pid, think=True)), "think", trace=trace)
+                treqs = [AgentRequest(pid, worker.prompt_ids(env, pid, think=True), "think", trace=trace)
                          for pid in pids]
                 for treq, tresp in zip(treqs, await worker.generate_agent_responses(treqs)):
                     record(treq, tresp, "think")
                     base_ids[treq.player_id] = (treq.prompt_ids + tresp.action_ids
-                                                + worker.encode_suffix("\n</think>\nAction:"))
+                                                + worker.think_suffix_ids())
             reqs = [AgentRequest(pid, base_ids[pid], phase, env.allowed_targets(pid), trace=trace) for pid in pids]
             # every await yields to the event loop so other lobbies make progress
             resps = await worker.generate_agent_responses(reqs)

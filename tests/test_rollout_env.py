@@ -21,6 +21,12 @@ class FakeWorker:
     def encode_suffix(self, text):
         return [7, 8]
 
+    def prompt_ids(self, env, pid, think=False):
+        return self.encode(env.build_prompt(pid, think))
+
+    def think_suffix_ids(self):
+        return [7, 8]
+
     def encode(self, text):
         return [ord(c) % 255 for c in text[-20:]]
 
