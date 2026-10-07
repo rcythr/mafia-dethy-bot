@@ -4,6 +4,7 @@ import gc
 import math
 import os
 import random
+import time
 from collections import defaultdict
 from typing import Dict, List
 
@@ -140,8 +141,11 @@ async def run_training(cfg) -> None:
     from dethy_rl.vllm_worker import VllmWorker
 
     # vLLM first: it reserves its GPU slice (gpu_memory_utilization), trainer takes the rest.
+    t0 = time.time()
     worker = VllmWorker(cfg)
+    t1 = time.time()
     agent = DethyAgent(cfg)
+    print(f"startup: vLLM engine {t1 - t0:.0f}s, PyTorch trainer {time.time() - t1:.0f}s")
     optimizer = torch.optim.AdamW(agent.trainable_parameters(), lr=cfg.training.learning_rate)
 
     mlflow.set_tracking_uri(cfg.experiment.tracking_uri)
