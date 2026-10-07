@@ -30,7 +30,7 @@ env:
   min_dialogue_rounds: 1
   max_dialogue_rounds: 3
   allow_no_lynch: true       # players may vote 9 = "no one"; if it wins the vote nobody is eliminated
-  lynch_rule: majority       # majority: need > half of living players' votes, else no elimination; plurality: most votes wins (ties random)
+  lynch_rule: plurality      # plurality: most votes wins, a tie for first elects no one; majority: need more than half of the living players
   think_tokens: 0            # >0: private reasoning (max tokens) before each night action and vote
   rewards:                      # see RewardConfig in dethy_rl/env.py
     lynch_mafia: 1.0

@@ -47,7 +47,7 @@ HOW TO ANSWER
 """
 
 
-def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "majority") -> str:
+def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "plurality") -> str:
     """The rules text, with or without the no-lynch option."""
     rule = (f" (or for {NO_LYNCH}, meaning no one: if that gets the most votes, nobody is eliminated "
             "and the next night begins)") if allow_no_lynch else ""
@@ -59,7 +59,9 @@ def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "majority") -> st
                 "If nobody gets that many votes (the votes are split, or most players vote for no one), "
                 "nobody is eliminated and the next night begins.")
     else:
-        elim = "The player with the most votes is eliminated (ties are broken at random)."
+        elim = ("The player with the most votes is eliminated. If two or more players tie for the most votes"
+                + (", or \"no one\" gets the most," if allow_no_lynch else ",")
+                + " nobody is eliminated and the next night begins.")
     return (_RULES_TEMPLATE.replace("{NOLYNCH_RULE}", rule).replace("{NOLYNCH_ANSWER}", answer)
             .replace("{ELIM_RULE}", elim))
 
@@ -99,7 +101,7 @@ def clean_message(text: str) -> str:
 class DethyEnv:
     def __init__(self, seed: Optional[int] = None, rewards: Optional[dict] = None,
                  min_rounds: int = 1, max_rounds: int = 3, allow_no_lynch: bool = True,
-                 lynch_rule: str = "majority"):
+                 lynch_rule: str = "plurality"):
         self.rng = random.Random(seed)
         self.rw = RewardConfig(**(rewards or {}))
         self.min_rounds, self.max_rounds = min_rounds, max_rounds
@@ -283,18 +285,13 @@ class DethyEnv:
                     continue  # abstaining: no bonus, no penalty
                 r[p] += self.rw.vote_mafia_bonus if v == mafia else -self.rw.vote_town_penalty
 
-        if self.lynch_rule == "majority":
-            # need MORE THAN HALF of the living players; abstentions and split votes elect no one
-            needed = len(self.alive) // 2 + 1
-            real = {v: c for v, c in counts.items() if v != NO_LYNCH}
-            top_player = max(real, key=real.get) if real else None
-            victim = top_player if top_player is not None and real[top_player] >= needed else NO_LYNCH
-        else:
-            top = max(counts.values())
-            victim = self.rng.choice(sorted(v for v, c in counts.items() if c == top))
+        top = max(counts.values())
+        leaders = [v for v, c in counts.items() if c == top]
+        victim = leaders[0] if len(leaders) == 1 else NO_LYNCH   # a tie for first elects no one
+        if self.lynch_rule == "majority" and victim != NO_LYNCH and top < len(self.alive) // 2 + 1:
+            victim = NO_LYNCH                                    # strict mode: need > half of the living
         if victim == NO_LYNCH:  # nobody is eliminated; the game goes straight to the next night
-            self.transcript.append("\nNo one was eliminated (no player got enough votes)." if self.lynch_rule == "majority"
-                                   else "\nNo one was eliminated.")
+            self.transcript.append("\nNo one was eliminated (no player got enough votes).")
             self.day += 1
             self.phase = "night"
             self.transcript.append(f"\n=== Night {self.day} ===\n")

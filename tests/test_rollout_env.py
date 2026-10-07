@@ -43,7 +43,7 @@ class FakeWorker:
 
 
 cfg = NS(rollout=NS(seed=1, max_concurrent_lobbies=8), training=NS(games_per_epoch=16),
-         env=NS(rewards={}, min_dialogue_rounds=1, max_dialogue_rounds=3, think_tokens=0, allow_no_lynch=True, lynch_rule="majority"))
+         env=NS(rewards={}, min_dialogue_rounds=1, max_dialogue_rounds=3, think_tokens=0, allow_no_lynch=True, lynch_rule="plurality"))
 b = asyncio.run(collect_trajectories(FakeWorker(), cfg))
 assert b["steps"] and sum(s["done"] for s in b["steps"]) == 16 * 5
 # thinking on: think steps precede each night/vote decision and the decision prompt extends the think prompt
@@ -134,7 +134,7 @@ assert max(lengths) >= 2, lengths   # games now sometimes run past one vote
 print("no-lynch ok", dict(sorted(lengths.items())), outcomes)
 
 
-# --- majority rule: split votes eliminate no one; > half of the living players eliminates
+# --- plurality rule: most votes wins; a tie for first eliminates no one; majority mode is stricter
 def day_one(seed, **kw):
     g = DethyEnv(seed=seed, **kw)
     g.step_night({p: random.choice(g.allowed_targets(p)) for p in g.alive})
@@ -142,27 +142,23 @@ def day_one(seed, **kw):
         g.step_dialogue(g.acting_players()[0], "x")
     return g
 
-g = day_one(8)                      # 4 alive -> need 3 votes
-a, b, c, d = g.alive
-split = {a: b, b: c, c: d, d: a}    # 1-1-1-1
-before = list(g.alive)
-_, done = g.step_vote(split)
-assert not done and g.alive == before and g.phase == "night"
-assert "no player got enough votes" in g.public_transcript()
+def vote_result(votes_fn, **kw):
+    g = day_one(8, **kw)
+    a, b, c, d = g.alive
+    before = list(g.alive)
+    g.step_vote(votes_fn(a, b, c, d))
+    return g, before
 
-g = day_one(8)
-a, b, c, d = g.alive
-_, done = g.step_vote({a: d, b: d, c: d, d: a})   # 3 of 4 on d
-assert d not in g.alive
-
-g = day_one(8)
-a, b, c, d = g.alive
-before = list(g.alive)
-g.step_vote({a: d, b: d, c: a, d: a})              # 2-2: no majority
+g, before = vote_result(lambda a, b, c, d: {a: b, b: c, c: d, d: a})    # 1-1-1-1 tie for first
+assert g.alive == before and g.phase == "night" and "no player got enough votes" in g.public_transcript()
+g, before = vote_result(lambda a, b, c, d: {a: d, b: d, c: a, d: a})    # 2-2 tie
 assert g.alive == before
-
-pl = day_one(8, lynch_rule="plurality")             # legacy rule still available
-a, b, c, d = pl.alive
-pl.step_vote({a: d, b: d, c: a, d: a})
-assert len(pl.alive) == 3
-print("majority rule ok")
+g, before = vote_result(lambda a, b, c, d: {a: d, b: d, c: b, d: a})    # 2-1-1: plurality eliminates d
+assert len(g.alive) == 3
+g, before = vote_result(lambda a, b, c, d: {a: d, b: NO_LYNCH, c: NO_LYNCH, d: a})   # 'no one' leads 2-1-1
+assert g.alive == before
+g, before = vote_result(lambda a, b, c, d: {a: d, b: d, c: d, d: a})    # clear winner
+assert len(g.alive) == 3
+g, before = vote_result(lambda a, b, c, d: {a: d, b: d, c: b, d: a}, lynch_rule="majority")  # 2 of 4 is not > half
+assert g.alive == before
+print("lynch rules ok")
