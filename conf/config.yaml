@@ -1,6 +1,6 @@
 experiment:
   name: dethy_mafia_ppo
-  tracking_uri: "file:./mlruns"
+  tracking_uri: http://storage.local:5000
   run_name: null
 
 training:
@@ -38,7 +38,7 @@ env:
     investigate_mafia_bonus: 0.1
 
 model:
-  name: meta-llama/Llama-3.2-3B-Instruct
+  name: unsloth/Llama-3.2-3B-Instruct
   max_tokens: 64           # max new tokens for a dialogue turn
   max_model_len: 4096
 
