@@ -6,6 +6,7 @@
                                                       # tokenizer's chat template + token counts
 """
 import argparse
+import json
 import random
 import sys
 from pathlib import Path
@@ -16,10 +17,10 @@ from dethy_rl.env import DethyEnv, clean_message  # noqa: E402
 CHAT_DATE = "26 Jul 2024"  # keep in sync with VllmWorker.CHAT_DATE
 
 
-def render(messages, tokenizer=None):
+def render(messages, tokenizer=None, chat_kwargs=None):
     if tokenizer is not None:
         return tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False,
-                                             date_string=CHAT_DATE)
+                                             date_string=CHAT_DATE, **(chat_kwargs or {}))
     out = "".join(f"<|{m['role']}|>\n{m['content']}\n" for m in messages)
     return out + "<|assistant|>\n"
 
@@ -58,6 +59,34 @@ def check_invariants(env):
     assert "Dethy Mafia" in msgs[0]["content"] and "Dethy Mafia" not in msgs[1]["content"]
 
 
+def check_template_kwargs():
+    """model.chat_template_kwargs reaches apply_chat_template for both prompts and the think suffix."""
+    from types import SimpleNamespace as NS
+    from dethy_rl.vllm_worker import VllmWorker
+
+    seen = []
+
+    class Tok:
+        def apply_chat_template(self, messages, **kw):
+            seen.append(kw)
+            return "<s>" + "".join(m["content"] for m in messages) + "@@THOUGHT@@END" if len(messages) > 2 else "<s>x"
+
+        def encode(self, text, add_special_tokens=True):
+            return [1, 2]
+
+    class Cfg(dict):
+        def get(self, k, d=None):
+            return dict.get(self, k, d)
+
+    w = VllmWorker.__new__(VllmWorker)
+    w.tokenizer = Tok()
+    w.cfg = NS(model=NS(use_chat_template=True, get=Cfg(chat_template_kwargs={"enable_thinking": False}).get))
+    w.prompt_ids(DethyEnv(seed=1), 0)
+    w.think_suffix_ids()
+    assert len(seen) == 2
+    assert all(kw["enable_thinking"] is False and "date_string" in kw and kw["add_generation_prompt"] for kw in seen)
+
+
 def check_clean_message():
     assert clean_message("Player_2: Player_2: This was a coordinated attack.") == "This was a coordinated attack."
     assert clean_message('"I think Player 1 is lying."') == "I think Player 1 is lying."
@@ -70,9 +99,11 @@ def check_clean_message():
 
 def main():
     check_clean_message()
+    check_template_kwargs()
     ap = argparse.ArgumentParser()
     ap.add_argument("--out")
     ap.add_argument("--model")
+    ap.add_argument("--chat-kwargs", default="{}", help='JSON, e.g. \'{"enable_thinking": false}\'')
     args = ap.parse_args()
     tok = None
     if args.model:
@@ -100,7 +131,7 @@ def main():
 
     chunks = []
     for title, e, pid, think in raw_examples:
-        text = render(e.build_messages(pid, think), tok)
+        text = render(e.build_messages(pid, think), tok, json.loads(args.chat_kwargs))
         n = f"  [{len(tok.encode(text, add_special_tokens=False))} tokens]" if tok else ""
         chunks.append(f"{'=' * 20} {title}{n} {'=' * 20}\n{text}")
     output = "\n\n".join(chunks)

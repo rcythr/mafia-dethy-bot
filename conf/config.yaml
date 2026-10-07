@@ -43,6 +43,7 @@ model:
   name: unsloth/Llama-3.2-3B-Instruct
   max_tokens: 96           # max new tokens for a dialogue turn
   max_model_len: 4096
+  chat_template_kwargs: {}  # extra args for the chat template, e.g. {enable_thinking: false} for models with a thinking mode
   use_chat_template: true  # wrap prompts in the model's chat template (rules = system, rest = user)
 
 lora:

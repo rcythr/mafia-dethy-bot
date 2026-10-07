@@ -64,7 +64,7 @@ Each epoch:
 
 ### Prompts
 
-Prompts go through the model's **chat template** (`model.use_chat_template`): the rules are the system message and everything below is one user message. The date the Llama template embeds is pinned so the prefix stays identical across runs. Set it to false to feed raw text.
+Prompts go through the model's **chat template** (`model.use_chat_template`): the rules are the system message and everything below is one user message. The date the Llama template embeds is pinned so the prefix stays identical across runs. Set it to false to feed raw text. Models with a thinking mode (Qwen3.x, Gemma 4) need it switched off, because we run our own scratchpad (`env.think_tokens`): `python main.py 'model.chat_template_kwargs={enable_thinking: false}'`. The exact argument name depends on the model's template; check with `python tests/test_prompt.py --model <name> --chat-kwargs '{"enable_thinking": false}'`.
 
 ```
 [shared public transcript, starting with the full rules]

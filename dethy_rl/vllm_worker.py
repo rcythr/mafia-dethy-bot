@@ -87,13 +87,18 @@ class VllmWorker:
 
     CHAT_DATE = "26 Jul 2024"  # fixed: Llama templates embed today's date, which would break prefix caching
 
+    def _template_kwargs(self) -> dict:
+        """Extra chat-template arguments from config (e.g. {enable_thinking: false}); the pinned
+        date is the default. Templates ignore arguments they don't use."""
+        return {"date_string": self.CHAT_DATE, **dict(self.cfg.model.get("chat_template_kwargs") or {})}
+
     def prompt_ids(self, env, player_id: int, think: bool = False) -> List[int]:
         """Token ids of the prompt, via the model's chat template when enabled."""
         if not self.cfg.model.use_chat_template:
             return self.encode(env.build_prompt(player_id, think))
         text = self.tokenizer.apply_chat_template(
             env.build_messages(player_id, think), add_generation_prompt=True, tokenize=False,
-            date_string=self.CHAT_DATE)
+            **self._template_kwargs())
         return self.tokenizer.encode(text, add_special_tokens=False)  # template already adds BOS
 
     def think_suffix_ids(self) -> List[int]:
@@ -105,7 +110,7 @@ class VllmWorker:
         full = self.tokenizer.apply_chat_template(
             [{"role": "user", "content": "x"}, {"role": "assistant", "content": marker},
              {"role": "user", "content": cue}],
-            add_generation_prompt=True, tokenize=False, date_string=self.CHAT_DATE)
+            add_generation_prompt=True, tokenize=False, **self._template_kwargs())
         return self.encode_suffix(full.split(marker, 1)[1])
 
     def encode_suffix(self, text: str) -> List[int]:
