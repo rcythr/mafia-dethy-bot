@@ -29,7 +29,10 @@ class DethyAgent(nn.Module):
         )
         self.policy_net = get_peft_model(base, lora)
         hidden = base.config.hidden_size
-        self.value_head = nn.Linear(hidden, 1, dtype=torch.bfloat16).to(base.device)
+        # fp32 (bf16 AdamW updates at lr 1e-4 barely move the weights); zero-init => V=0 at start
+        self.value_head = nn.Linear(hidden, 1, dtype=torch.float32).to(base.device)
+        nn.init.zeros_(self.value_head.weight)
+        nn.init.zeros_(self.value_head.bias)
 
     def trainable_parameters(self):
         return [p for p in self.parameters() if p.requires_grad]
@@ -49,7 +52,7 @@ class DethyAgent(nn.Module):
         out = self.policy_net(input_ids=input_ids, output_hidden_states=True, logits_to_keep=keep)
         curr_logits = out.logits[:, :-1] if num_action_tokens else out.logits
         hidden = out.hidden_states[-1][:, value_pos]
-        state_values = self.value_head(hidden.to(self.value_head.weight.dtype)).squeeze(-1)
+        state_values = self.value_head(hidden.float()).squeeze(-1)
 
         ref_logits = None
         if compute_ref:
@@ -61,7 +64,9 @@ class DethyAgent(nn.Module):
     @torch.no_grad()
     def values(self, input_ids: torch.Tensor, value_pos: int) -> torch.Tensor:
         out = self.policy_net(input_ids=input_ids, output_hidden_states=True, logits_to_keep=1)
-        return self.value_head(out.hidden_states[-1][:, value_pos]).squeeze(-1)
+        return self.value_head(out.hidden_states[-1][:, value_pos].float()).squeeze(-1)
 
     def save_adapter(self, path: str) -> None:
+        """LoRA adapter (loaded by vLLM) plus the value head (needed to resume training)."""
         self.policy_net.save_pretrained(path)
+        torch.save(self.value_head.state_dict(), f"{path}/value_head.pt")

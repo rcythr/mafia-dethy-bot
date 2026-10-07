@@ -32,7 +32,7 @@ def _ids(step, device):
     return torch.tensor([step["prompt_ids"] + step["action_ids"]], device=device)
 
 
-def annotate_advantages(agent, steps: List[Dict], cfg) -> None:
+def annotate_advantages(agent, steps: List[Dict], cfg) -> Dict[str, float]:
     """Value pass (no grad) -> per-player GAE -> normalised advantages stored on each step."""
     device = agent.value_head.weight.device
     agent.eval()
@@ -46,24 +46,41 @@ def annotate_advantages(agent, steps: List[Dict], cfg) -> None:
                                cfg.training.gamma, cfg.training.gae_lambda)
         for s, a, r in zip(traj, adv, ret):
             s["advantage"], s["return"] = a, r
-    advs = torch.tensor([s["advantage"] for s in steps])
-    mean, std = advs.mean(), advs.std(unbiased=False).clamp_min(1e-6)
+    rets = torch.tensor([s["return"] for s in steps])
+    vals = torch.tensor([s["value"] for s in steps])
+    ev = 1.0 - ((rets - vals).var() / rets.var().clamp_min(1e-8)).item()
+
+    # Normalise advantages per team: the lone Mafia has a different reward scale and far less
+    # data than the 4 Cops, so a pooled normalisation would drown its signal.
+    groups = defaultdict(list)
     for s in steps:
-        s["advantage"] = float((s["advantage"] - mean) / std)
+        groups[(s["role"] == "Mafia") if cfg.training.normalize_by_team else 0].append(s)
+    for g in groups.values():
+        advs = torch.tensor([s["advantage"] for s in g])
+        mean = advs.mean()
+        std = advs.std(unbiased=False).clamp_min(1e-6) if len(g) > 1 else torch.tensor(1.0)
+        for s in g:
+            s["advantage"] = float((s["advantage"] - mean) / std)
+    return dict(explained_variance=ev, avg_value=vals.mean().item())
 
 
-def ppo_step_loss(agent, step: Dict, cfg):
+def ppo_step_loss(agent, step: Dict, cfg, train_policy: bool = True):
     device = agent.value_head.weight.device
     K, P = len(step["action_ids"]), len(step["prompt_ids"])
-    curr, ref, value = agent(_ids(step, device), num_action_tokens=K, value_pos=P - 1)
-    curr, ref = curr[0].float(), ref[0].float()  # (K, V)
+    curr, ref, value = agent(_ids(step, device), num_action_tokens=K, value_pos=P - 1,
+                             compute_ref=train_policy)
+    curr = curr[0].float()  # (K, V)
+    ref = ref[0].float() if ref is not None else None
     if step["allowed_token_ids"] is not None and cfg.training.masked_vote_logprobs:
         keep = torch.zeros(curr.shape[-1], dtype=torch.bool, device=device)
         keep[step["allowed_token_ids"]] = True
         curr = curr.masked_fill(~keep, -1e9)
-        ref = ref.masked_fill(~keep, -1e9)
+        ref = ref.masked_fill(~keep, -1e9) if ref is not None else None
 
     logp_all = F.log_softmax(curr, dim=-1)
+    value_loss = F.mse_loss(value.float().squeeze(), torch.tensor(step["return"], device=device))
+    if not train_policy:  # critic warm-up: only fit the value head
+        return value_loss, dict(value_loss=value_loss.item(), total_loss=value_loss.item())
     ref_logp_all = F.log_softmax(ref, dim=-1)
     actions = torch.tensor(step["action_ids"], device=device)
     logp = logp_all.gather(-1, actions[:, None]).squeeze(-1)
@@ -77,15 +94,16 @@ def ppo_step_loss(agent, step: Dict, cfg):
     probs = logp_all.exp()
     kl = (probs * (logp_all - ref_logp_all)).sum(-1).mean()       # KL(pi_theta || pi_ref)
     entropy = -(probs * logp_all).sum(-1).mean()
-    value_loss = F.mse_loss(value.float().squeeze(), torch.tensor(step["return"], device=device))
 
     total = (policy_loss + cfg.training.value_coef * value_loss
              + cfg.training.kl_coef * kl - cfg.training.entropy_coef * entropy)
     return total, dict(policy_loss=policy_loss.item(), value_loss=value_loss.item(),
-                       kl=kl.item(), entropy=entropy.item(), total_loss=total.item())
+                       kl=kl.item(), entropy=entropy.item(), total_loss=total.item(),
+                       clip_frac=((ratio - 1).abs() > eps).float().mean().item(),
+                       approx_kl_old=(old_logp - logp).mean().item())
 
 
-def ppo_update(agent, optimizer, steps: List[Dict], cfg) -> Dict[str, float]:
+def ppo_update(agent, optimizer, steps: List[Dict], cfg, train_policy: bool = True) -> Dict[str, float]:
     agent.train()
     accum = cfg.training.grad_accum_steps
     sums: Dict[str, float] = defaultdict(float)
@@ -94,7 +112,7 @@ def ppo_update(agent, optimizer, steps: List[Dict], cfg) -> Dict[str, float]:
         random.shuffle(steps)
         optimizer.zero_grad(set_to_none=True)
         for i, s in enumerate(steps, 1):
-            loss, stats = ppo_step_loss(agent, s, cfg)
+            loss, stats = ppo_step_loss(agent, s, cfg, train_policy)
             (loss / accum).backward()
             for k, v in stats.items():
                 sums[k] += v
@@ -126,10 +144,13 @@ async def run_training(cfg) -> None:
         for epoch in range(cfg.training.epochs):
             batch = await collect_trajectories(worker, cfg)
             steps = batch["steps"]
-            annotate_advantages(agent, steps, cfg)
-            stats = ppo_update(agent, optimizer, steps, cfg)
-            stats.update(avg_episode_reward=batch["avg_episode_reward"],
-                         town_win_rate=batch["town_win_rate"], avg_steps_per_game=batch["avg_game_len"])
+            adv_stats = annotate_advantages(agent, steps, cfg)
+            warmup = epoch < cfg.training.value_warmup_epochs  # fit the critic before trusting its advantages
+            stats = ppo_update(agent, optimizer, steps, cfg, train_policy=not warmup)
+            stats.update(adv_stats)
+            stats.update({k: batch[k] for k in (
+                "avg_episode_reward", "town_win_rate", "vote_mafia_rate_sane",
+                "vote_mafia_rate_other_cops", "avg_dialogue_tokens")}, avg_steps_per_game=batch["avg_game_len"])
             mlflow.log_metrics(stats, step=epoch)
             print(f"epoch {epoch}: " + " ".join(f"{k}={v:.4f}" for k, v in stats.items()))
 
