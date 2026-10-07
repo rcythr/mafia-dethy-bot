@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 ROLES = ["Sane", "Insane", "Naive", "Paranoid", "Mafia"]
+NO_LYNCH = 9  # a vote "for" this digit means "eliminate no one"; never a real player id (0-4)
 
-RULES = """You are playing Dethy Mafia, a social deduction game. There are 5 players: Player_0 to Player_4.
+_RULES_TEMPLATE = """You are playing Dethy Mafia, a social deduction game. There are 5 players: Player_0 to Player_4.
 
 ROLES
 - One player is the Mafia. The other four are Cops. The Mafia wins by surviving; the Cops (the Town) win by eliminating the Mafia.
@@ -21,7 +22,7 @@ ROLES
 HOW THE GAME RUNS
 1. Night: every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their sanity). At the same time the Mafia kills one other player, who is out of the game.
 2. Day discussion: the living players talk in 1 to 3 rounds. In each round everyone speaks once, in a random order, and can read everything said so far.
-3. Day vote: every living player votes for one living player to eliminate. The player with the most votes is eliminated (ties are broken at random) and everyone is told they were or were not the Mafia.
+3. Day vote: every living player votes for one living player to eliminate{NOLYNCH_RULE}. {ELIM_RULE} Whoever is eliminated is announced as having been or not been the Mafia.
 Then the next night begins.
 
 HOW THE GAME ENDS
@@ -41,10 +42,30 @@ Cop X is Sane and privately saw "Mafia" when investigating Z. During discussion 
 Another Cop, W, is Insane and saw "Not Mafia" for V. Because Insane results are reversed, W privately concludes V is probably the Mafia, and may say V has seemed evasive without revealing the result. A Naive or Paranoid Cop knows their results are meaningless, so they should rely on what others say and may bluff.
 
 HOW TO ANSWER
-- Night and Vote phases: answer with a single digit, the ID of a living player other than yourself (for example: 3). Nothing else.
+- Night and Vote phases: answer with a single digit, the ID of a living player other than yourself (for example: 3). Nothing else.{NOLYNCH_ANSWER}
 - Discussion phase: write one or two short sentences (about 40 words at most) as yourself. Do not write your own name or "Player_N:" at the start.
 - Discussion is only talking. Nobody investigates or kills during the day: investigations and kills happen at night, and the day ends with a vote. Use the discussion to say who you suspect and why, to defend yourself, or to share (truthfully or not) what your investigations showed. Do not ask others to investigate.
 """
+
+
+def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "majority") -> str:
+    """The rules text, with or without the no-lynch option."""
+    rule = (f" (or for {NO_LYNCH}, meaning no one: if that gets the most votes, nobody is eliminated "
+            "and the next night begins)") if allow_no_lynch else ""
+    answer = (f" In the Vote phase you may instead answer {NO_LYNCH} to vote for no one. Voting for no one is safe "
+              "if you are unsure, but the Mafia keeps killing every night, so skipping too long lets it win."
+              ) if allow_no_lynch else ""
+    if lynch_rule == "majority":
+        elim = ("A player is eliminated only if MORE THAN HALF of the living players vote for them. "
+                "If nobody gets that many votes (the votes are split, or most players vote for no one), "
+                "nobody is eliminated and the next night begins.")
+    else:
+        elim = "The player with the most votes is eliminated (ties are broken at random)."
+    return (_RULES_TEMPLATE.replace("{NOLYNCH_RULE}", rule).replace("{NOLYNCH_ANSWER}", answer)
+            .replace("{ELIM_RULE}", elim))
+
+
+RULES = build_rules(True)
 
 
 @dataclass
@@ -78,10 +99,14 @@ def clean_message(text: str) -> str:
 
 class DethyEnv:
     def __init__(self, seed: Optional[int] = None, rewards: Optional[dict] = None,
-                 min_rounds: int = 1, max_rounds: int = 3):
+                 min_rounds: int = 1, max_rounds: int = 3, allow_no_lynch: bool = True,
+                 lynch_rule: str = "majority"):
         self.rng = random.Random(seed)
         self.rw = RewardConfig(**(rewards or {}))
         self.min_rounds, self.max_rounds = min_rounds, max_rounds
+        self.allow_no_lynch = allow_no_lynch
+        assert lynch_rule in ("majority", "plurality"), lynch_rule
+        self.lynch_rule = lynch_rule
         self.reset()
 
     # ------------------------------------------------------------------ state
@@ -114,7 +139,10 @@ class DethyEnv:
         return list(self.alive)
 
     def allowed_targets(self, player_id: int) -> List[int]:
-        return [p for p in self.alive if p != player_id]  # never yourself, for kills, checks or votes
+        targets = [p for p in self.alive if p != player_id]  # never yourself, for kills, checks or votes
+        if self.phase == "vote" and self.allow_no_lynch:
+            targets.append(NO_LYNCH)
+        return targets
 
     # ---------------------------------------------------------------- prompts
     def public_transcript(self) -> str:
@@ -122,12 +150,12 @@ class DethyEnv:
 
     def build_messages(self, player_id: int, think: bool = False) -> List[Dict[str, str]]:
         """Chat form: the rules are the system message, the rest is one user message."""
-        return [{"role": "system", "content": RULES.strip()},
+        return [{"role": "system", "content": build_rules(self.allow_no_lynch, self.lynch_rule).strip()},
                 {"role": "user", "content": self.user_text(player_id, think)}]
 
     def build_prompt(self, player_id: int, think: bool = False) -> str:
         """Raw-text form (no chat template): rules followed by the user text."""
-        return f"{RULES}\n{self.user_text(player_id, think)}"
+        return f"{build_rules(self.allow_no_lynch, self.lynch_rule)}\n{self.user_text(player_id, think)}"
 
     def user_text(self, player_id: int, think: bool = False) -> str:
         """[Shared Public Transcript] + \\nPrivate Role: [Role]. Phase: [Phase]. Action:
@@ -146,7 +174,8 @@ class DethyEnv:
         elif self.phase == "dialogue":
             phase = f"Day {self.day} Dialogue round {self.round}/{self.num_rounds} (say one short public message)"
         else:
-            phase = f"Day {self.day} Vote (answer with the ID of the player to eliminate)"
+            skip = f", or {NO_LYNCH} to vote for no one" if self.allow_no_lynch else ""
+            phase = f"Day {self.day} Vote (answer with the ID of the player to eliminate{skip})"
         if think:  # private reasoning stage; the decision stage re-uses this prompt as its prefix
             return (f"{head}\n{role}\n\nPhase: {phase}.\n\n"
                     "First think privately about who is the Mafia, then stop.\n\nThoughts:")
@@ -228,11 +257,14 @@ class DethyEnv:
     def step_vote(self, votes: Dict[int, int]) -> Tuple[Dict[int, float], bool]:
         """Returns (per-player rewards, game_over)."""
         assert self.phase == "vote"
-        valid = {p: v for p, v in votes.items() if p in self.alive and v in self.alive and v != p}
+        legal = set(self.alive) | ({NO_LYNCH} if self.allow_no_lynch else set())
+        valid = {p: v for p, v in votes.items() if p in self.alive and v in legal and v != p}
         for p in self.alive:  # invalid votes get a random valid vote
             valid.setdefault(p, self.rng.choice(self.allowed_targets(p)))
         self.transcript.append(
-            f"Votes:\n" + "\n".join(f"\nPlayer_{p} voted for Player_{v}" for p, v in sorted(valid.items()))
+            "Votes:\n" + "\n".join(
+                f"\nPlayer_{p} voted for " + ("no one" if v == NO_LYNCH else f"Player_{v}")
+                for p, v in sorted(valid.items()))
         )
         counts = Counter(valid.values())
         mafia = self.mafia_id
@@ -243,10 +275,26 @@ class DethyEnv:
         self._team(r, heat, -heat)
         for p, v in valid.items():
             if p != mafia:
+                if v == NO_LYNCH:
+                    continue  # abstaining: no bonus, no penalty
                 r[p] += self.rw.vote_mafia_bonus if v == mafia else -self.rw.vote_town_penalty
 
-        top = max(counts.values())
-        victim = self.rng.choice(sorted(v for v, c in counts.items() if c == top))
+        if self.lynch_rule == "majority":
+            # need MORE THAN HALF of the living players; abstentions and split votes elect no one
+            needed = len(self.alive) // 2 + 1
+            real = {v: c for v, c in counts.items() if v != NO_LYNCH}
+            top_player = max(real, key=real.get) if real else None
+            victim = top_player if top_player is not None and real[top_player] >= needed else NO_LYNCH
+        else:
+            top = max(counts.values())
+            victim = self.rng.choice(sorted(v for v, c in counts.items() if c == top))
+        if victim == NO_LYNCH:  # nobody is eliminated; the game goes straight to the next night
+            self.transcript.append("\nNo one was eliminated (no player got enough votes)." if self.lynch_rule == "majority"
+                                   else "\nNo one was eliminated.")
+            self.day += 1
+            self.phase = "night"
+            self.transcript.append(f"\n=== Night {self.day} ===\n")
+            return dict(r), False
         self.alive.remove(victim)
 
         if self.roles[victim] == "Mafia":

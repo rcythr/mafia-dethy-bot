@@ -43,7 +43,7 @@ class FakeWorker:
 
 
 cfg = NS(rollout=NS(seed=1, max_concurrent_lobbies=8), training=NS(games_per_epoch=16),
-         env=NS(rewards={}, min_dialogue_rounds=1, max_dialogue_rounds=3, think_tokens=0))
+         env=NS(rewards={}, min_dialogue_rounds=1, max_dialogue_rounds=3, think_tokens=0, allow_no_lynch=True, lynch_rule="majority"))
 b = asyncio.run(collect_trajectories(FakeWorker(), cfg))
 assert b["steps"] and sum(s["done"] for s in b["steps"]) == 16 * 5
 # thinking on: think steps precede each night/vote decision and the decision prompt extends the think prompt
@@ -95,3 +95,74 @@ for seed in range(300):
     assert env.winner in ("Town", "Mafia")
 assert rounds_seen == {1, 2, 3} and len(orders) > 5 and kills > 0
 print("env checks ok")
+
+
+# --- no-lynch: abstaining keeps everyone alive and goes to the next night; games still terminate
+from dethy_rl.env import NO_LYNCH  # noqa: E402
+
+e = DethyEnv(seed=5)
+e.step_night({p: random.choice(e.allowed_targets(p)) for p in e.alive})
+while e.phase == "dialogue":
+    e.step_dialogue(e.acting_players()[0], "x")
+assert NO_LYNCH in e.allowed_targets(e.alive[0])
+alive_before = list(e.alive)
+rewards, done = e.step_vote({p: NO_LYNCH for p in e.alive})
+assert not done and e.alive == alive_before and e.phase == "night" and e.day == 2
+assert "No one was eliminated" in e.public_transcript()
+# abstaining earns neither the Cop vote bonus nor the penalty, and the old (no-option) rules still work
+off = DethyEnv(seed=5, allow_no_lynch=False)
+off.step_night({p: random.choice(off.allowed_targets(p)) for p in off.alive})
+assert all(NO_LYNCH not in off.allowed_targets(p) for p in off.alive)
+assert "or 9" not in off.build_prompt(off.alive[0])
+
+lengths, outcomes = {}, {}
+for seed in range(1000):
+    g = DethyEnv(seed=seed)
+    days = 0
+    while not g.done:
+        if g.phase == "night":
+            g.step_night({p: random.choice(g.allowed_targets(p)) for p in g.alive})
+        elif g.phase == "dialogue":
+            g.step_dialogue(g.acting_players()[0], "x")
+        else:
+            days += 1
+            g.step_vote({p: random.choice(g.allowed_targets(p)) for p in g.alive})
+        assert days < 10
+    lengths[days] = lengths.get(days, 0) + 1
+    outcomes[g.winner] = outcomes.get(g.winner, 0) + 1
+assert max(lengths) >= 2, lengths   # games now sometimes run past one vote
+print("no-lynch ok", dict(sorted(lengths.items())), outcomes)
+
+
+# --- majority rule: split votes eliminate no one; > half of the living players eliminates
+def day_one(seed, **kw):
+    g = DethyEnv(seed=seed, **kw)
+    g.step_night({p: random.choice(g.allowed_targets(p)) for p in g.alive})
+    while g.phase == "dialogue":
+        g.step_dialogue(g.acting_players()[0], "x")
+    return g
+
+g = day_one(8)                      # 4 alive -> need 3 votes
+a, b, c, d = g.alive
+split = {a: b, b: c, c: d, d: a}    # 1-1-1-1
+before = list(g.alive)
+_, done = g.step_vote(split)
+assert not done and g.alive == before and g.phase == "night"
+assert "no player got enough votes" in g.public_transcript()
+
+g = day_one(8)
+a, b, c, d = g.alive
+_, done = g.step_vote({a: d, b: d, c: d, d: a})   # 3 of 4 on d
+assert d not in g.alive
+
+g = day_one(8)
+a, b, c, d = g.alive
+before = list(g.alive)
+g.step_vote({a: d, b: d, c: a, d: a})              # 2-2: no majority
+assert g.alive == before
+
+pl = day_one(8, lynch_rule="plurality")             # legacy rule still available
+a, b, c, d = pl.alive
+pl.step_vote({a: d, b: d, c: a, d: a})
+assert len(pl.alive) == 3
+print("majority rule ok")

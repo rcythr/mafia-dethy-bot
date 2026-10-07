@@ -2,7 +2,7 @@
 import asyncio
 from typing import Any, Dict, List
 
-from dethy_rl.env import DethyEnv
+from dethy_rl.env import NO_LYNCH, DethyEnv
 from dethy_rl.tracing import span
 from dethy_rl.vllm_worker import AgentRequest
 
@@ -12,11 +12,12 @@ async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore, trace: b
     async with sem:
         # epoch is part of the seed so every epoch sees fresh role assignments and draws
         env = DethyEnv(seed=(cfg.rollout.seed * 1_000_003 + epoch) * 100_003 + lobby_id, rewards=dict(cfg.env.rewards),
-                       min_rounds=cfg.env.min_dialogue_rounds, max_rounds=cfg.env.max_dialogue_rounds)
+                       min_rounds=cfg.env.min_dialogue_rounds, max_rounds=cfg.env.max_dialogue_rounds,
+                       allow_no_lynch=cfg.env.allow_no_lynch, lynch_rule=cfg.env.lynch_rule)
         steps: List[Dict[str, Any]] = []
         last_step: Dict[int, Dict[str, Any]] = {}
         returns = {p: 0.0 for p in env.roles}
-        vote_log = []  # (role, voted_for_mafia)
+        vote_log = []  # (role, voted_for_mafia, abstained)
 
         def add_reward(rewards: Dict[int, float]) -> None:
             for p, r in rewards.items():
@@ -68,7 +69,7 @@ async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore, trace: b
                 for pid, text in actions.items():  # one speaker per turn, random order from env
                     env.step_dialogue(pid, text)
             else:
-                vote_log += [(env.roles[p], t == env.mafia_id) for p, t in actions.items()
+                vote_log += [(env.roles[p], t == env.mafia_id, t == NO_LYNCH) for p, t in actions.items()
                              if env.roles[p] != "Mafia"]
                 rewards, _ = env.step_vote(actions)
                 add_reward(rewards)
@@ -98,8 +99,8 @@ async def collect_trajectories(worker, cfg, trace: bool = False, epoch: int = 0)
     all_returns = [r for g in games for r in g["returns"].values()]
     votes = [v for g in games for v in g["votes"]]
 
-    def rate(roles):
-        xs = [m for r, m in votes if r in roles]
+    def rate(roles, idx=1):
+        xs = [v[idx] for v in votes if v[0] in roles]
         return sum(xs) / len(xs) if xs else float("nan")
 
     dlg = [len(s["action_ids"]) for s in steps if s["phase"] == "dialogue"]
@@ -107,6 +108,7 @@ async def collect_trajectories(worker, cfg, trace: bool = False, epoch: int = 0)
     return dict(
         vote_mafia_rate_sane=rate({"Sane"}),            # should climb well above chance (~0.25)
         vote_mafia_rate_other_cops=rate({"Insane", "Naive", "Paranoid"}),
+        vote_nolynch_rate=rate({"Sane", "Insane", "Naive", "Paranoid"}, idx=2),
         avg_dialogue_tokens=sum(dlg) / max(len(dlg), 1),
         avg_think_tokens=sum(thk) / max(len(thk), 1),
         steps=steps,

@@ -19,9 +19,9 @@ A game alternates:
 
 1. **Night.** Every Cop investigates one player (privately learns "Mafia"/"Not Mafia" per their sanity). The Mafia kills one other player. Both happen simultaneously.
 2. **Day dialogue.** A random **1-3 rounds**. Each round has a freshly shuffled speaking order, and players speak one at a time, so later speakers see earlier messages.
-3. **Day vote.** Everyone votes for one living player; ties are broken randomly. That player is eliminated and their *non-Mafia-ness* is announced (their sanity stays hidden).
+3. **Day vote.** Everyone votes for another living player, or for `9` = "no one". A player is eliminated only with **more than half of the living players' votes** (`env.lynch_rule: majority`); if the votes are split or most players abstain, nobody is eliminated and the next night begins. An eliminated player's *non-Mafia-ness* is announced (their sanity stays hidden). `env.allow_no_lynch=false` removes the `9` option; `env.lynch_rule=plurality` restores "most votes wins, ties random".
 
-Town wins when the Mafia is eliminated. The Mafia wins when 2 or fewer players remain (parity). With a night kill every night, games last at most a couple of days.
+Town wins when the Mafia is eliminated. The Mafia wins when 2 or fewer players remain (parity). The Mafia kills every night, so abstaining or splitting the vote only delays things: with random play, a game is usually two days (about 2,800 of 3,000 simulated games), and Town wins only about 12% of them, so Town has to coordinate.
 
 ## Layout
 

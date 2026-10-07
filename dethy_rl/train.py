@@ -197,7 +197,8 @@ async def run_training(cfg) -> None:
             stats.update(adv_stats, learning_rate=lr)
             stats.update({k: batch[k] for k in (
                 "avg_episode_reward", "town_win_rate", "vote_mafia_rate_sane",
-                "vote_mafia_rate_other_cops", "avg_dialogue_tokens", "avg_think_tokens")}, avg_steps_per_game=batch["avg_game_len"])
+                "vote_mafia_rate_other_cops", "vote_nolynch_rate", "avg_dialogue_tokens",
+                "avg_think_tokens")}, avg_steps_per_game=batch["avg_game_len"])
             _safe(mlflow.log_metrics, stats, step=epoch)
             if epoch % cfg.training.get("transcript_every", 1) == 0:  # read these to see what the agents do
                 _safe(mlflow.log_text, "\n\n=====\n\n".join(batch["sample_transcripts"]),
