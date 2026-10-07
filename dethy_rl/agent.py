@@ -1,23 +1,17 @@
-"""PyTorch policy: 4-bit base + LoRA + value head, with a zero-copy reference policy."""
+"""PyTorch policy: bf16 base + LoRA + value head, with a zero-copy reference policy."""
 from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 from peft import LoraConfig, get_peft_model
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM
 
 
 class DethyAgent(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        quant = None
-        if cfg.model.load_in_4bit:
-            quant = BitsAndBytesConfig(
-                load_in_4bit=True, bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True,
-            )
         base = AutoModelForCausalLM.from_pretrained(
-            cfg.model.name, quantization_config=quant, torch_dtype=torch.bfloat16,
+            cfg.model.name, torch_dtype=torch.bfloat16,
             device_map={"": 0},
         )
         base.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})

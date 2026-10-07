@@ -49,14 +49,7 @@ mlflow ui --backend-store-uri ./mlruns           # view runs
 python tests/test_rollout_env.py && python tests/test_train_logic.py   # no GPU needed
 ```
 
-For the DGX Spark (128 GB unified memory) you don't need the 12 GB workarounds:
-
-```bash
-python main.py model.load_in_4bit=false vllm.quantization=null vllm.gpu_memory_utilization=0.4
-```
-
-For a fast smoke test on a small GPU, use a smaller model:
-`model.name=meta-llama/Llama-3.2-1B-Instruct model.load_in_4bit=false vllm.quantization=null`.
+Everything runs in bf16 (no quantisation). The target is a DGX Spark (128 GB unified memory); `vllm.gpu_memory_utilization` (default 0.3) is the share vLLM reserves and the trainer uses the rest. For a fast smoke test on a smaller GPU, use a smaller model: `model.name=meta-llama/Llama-3.2-1B-Instruct`.
 
 ## How it works
 
@@ -108,12 +101,12 @@ Rewards are credited to the player's most recent decision (a night kill lands on
 **Training stack**
 - **vLLM for acting, PyTorch+PEFT for training.** vLLM's continuous batching makes self-play generation fast; training needs gradients, which vLLM can't give.
 - **LoRA, not full fine-tuning.** Small trainable state, and vLLM can hot-load adapters, which makes weight sync a save + reload instead of copying 3B weights.
-- **4-bit on a 12 GB GPU.** A bf16 3B model (~6.4 GB) can't fit in 30% of 12 GB, so vLLM loads bitsandbytes 4-bit and the trainer uses NF4. The two quantisation paths can drift slightly, which adds noise to PPO ratios. That is a main reason to prefer the DGX Spark, where both run bf16.
+- **No quantisation.** vLLM and the trainer both use bf16 weights, so the sampler and the trained policy are numerically close and PPO ratios start near 1. This assumes a large-memory GPU such as the DGX Spark; a 12 GB card can't hold vLLM's slice plus a bf16 trainer.
 - **vLLM starts before the trainer** so it can reserve its memory slice (`gpu_memory_utilization: 0.3`), leaving the rest for PyTorch.
 - **One shared policy plays every role.** Plain self-play. The role is in the prompt.
 
 **Making the PPO loss fit in memory**
-- **Only action-token logits are computed** (`logits_to_keep`), not the full-sequence logits. A 128k vocab over a long prompt would not fit in 12 GB. The reference logits come from the same weights with the adapter disabled (`disable_adapter()`), so there's no second model.
+- **Only action-token logits are computed** (`logits_to_keep`), not the full-sequence logits. A 128k vocab over a long prompt makes full-sequence logits very large. The reference logits come from the same weights with the adapter disabled (`disable_adapter()`), so there's no second model.
 - **Exact KL** to the reference over the full vocabulary at each action position, not a sampled estimate.
 - Batch size 1 with gradient accumulation and gradient checkpointing.
 
@@ -140,7 +133,7 @@ Rewards are credited to the player's most recent decision (a night kill lands on
 
 ## Known risks
 
-- vLLM's API moves quickly. `logits_processors` per request, `logprobs_mode`, LoRA with bitsandbytes quantisation, and aarch64 (DGX Spark) wheels all need checking on first launch. Pin versions in `requirements.txt` once you have a working set.
+- vLLM's API moves quickly. `logits_processors` per request, `logprobs_mode`, LoRA adapter loading, and aarch64 (DGX Spark) wheels all need checking on first launch. Pin versions in `requirements.txt` once you have a working set.
 - `value_warmup_epochs` (2) overlaps with `lr_warmup_epochs` (5), so the policy's effective LR warmup is shorter than it looks.
 - LoRA dropout (0.05) is active during PPO forward passes but not in vLLM, adding small ratio noise.
 - Thinking mode multiplies generated tokens per game; on the Spark (lower memory bandwidth) that costs wall-clock time, not memory.

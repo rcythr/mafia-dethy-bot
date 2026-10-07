@@ -62,8 +62,6 @@ class VllmWorker:
             enable_prefix_caching=True,   # shared-transcript-first prompts => prefix KV reuse
             dtype="bfloat16",
         )
-        if cfg.vllm.quantization:
-            kwargs["quantization"] = cfg.vllm.quantization
         if cfg.vllm.get("logprobs_mode"):
             kwargs["logprobs_mode"] = cfg.vllm.logprobs_mode
         try:
