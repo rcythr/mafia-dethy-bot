@@ -6,14 +6,39 @@ from typing import Dict, List, Optional, Tuple
 
 ROLES = ["Sane", "Insane", "Naive", "Paranoid", "Mafia"]
 
-RULES = (
-    "Dethy Mafia. 5 players: 1 Mafia and 4 Cops with hidden sanities. "
-    "Each night every Cop investigates one player and privately learns 'Mafia' or 'Not Mafia', "
-    "and the Mafia kills one other player. "
-    "Sane Cops see the truth, Insane Cops see the opposite, Naive Cops always see 'Not Mafia', "
-    "Paranoid Cops always see 'Mafia'. Each day all players discuss in turns, then vote to eliminate one player. "
-    "Town wins if the Mafia is eliminated; Mafia wins when 2 or fewer players remain.\n"
-)
+RULES = """You are playing Dethy Mafia, a social deduction game. There are 5 players: Player_0 to Player_4.
+
+ROLES
+- One player is the Mafia. The other four are Cops. The Mafia wins by surviving; the Cops (the Town) win by eliminating the Mafia.
+- Each Cop has a hidden sanity that decides what their investigations tell them:
+  * Sane: sees the truth ("Mafia" if the target is the Mafia, otherwise "Not Mafia").
+  * Insane: sees the opposite of the truth (the Mafia looks like "Not Mafia", everyone else looks like "Mafia").
+  * Naive: always sees "Not Mafia", whoever the target is, so a Naive result tells you nothing.
+  * Paranoid: always sees "Mafia", whoever the target is, so a Paranoid result tells you nothing.
+- You always know your own role (and sanity, if you are a Cop). Nobody else's role or sanity is revealed unless you choose to say it, and you may lie.
+
+HOW THE GAME RUNS
+1. Night: every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their sanity). At the same time the Mafia kills one other player, who is out of the game.
+2. Day discussion: the living players talk in 1 to 3 rounds. In each round everyone speaks once, in a random order, and can read everything said so far.
+3. Day vote: every living player votes for one living player to eliminate. The player with the most votes is eliminated (ties are broken at random) and everyone is told they were or were not the Mafia.
+Then the next night begins.
+
+HOW THE GAME ENDS
+- The Cops win as soon as the Mafia is eliminated.
+- The Mafia wins when only 2 players are left alive.
+
+WHAT YOU SEE
+- Everything above the line starting "You are Player_..." is public and visible to every player.
+- That line shows your Private Role and your Private Notes (your own investigation results). Only you can see them.
+
+HOW TO PLAY
+- Cops: use your investigation results, but remember your own sanity when you interpret them (for example, an Insane Cop who sees "Not Mafia" should suspect the target). Share useful information, question inconsistent claims, and vote for who you believe is the Mafia.
+- Mafia: stay alive. Blend in, cast suspicion on others, and kill players who might expose you.
+
+HOW TO ANSWER
+- Night and Vote phases: answer with a single digit, the ID of a living player (for example: 3). Nothing else.
+- Discussion phase: write one or two short sentences as yourself. Do not write your own name or "Player_N:" at the start.
+"""
 
 
 @dataclass
@@ -52,7 +77,7 @@ class DethyEnv:
         self.num_rounds = 0
         self.round = 0
         self.speakers: List[int] = []
-        self.transcript.append(f"Night {self.day} begins.")
+        self.transcript.append(f"\n=== Night {self.day} ===")
 
     @property
     def mafia_id(self) -> int:
@@ -80,8 +105,11 @@ class DethyEnv:
 
         The transcript is byte-identical across agents so vLLM can reuse the prefix KV cache.
         """
+        # public and identical for every player, so the prefix cache still covers it
+        head = (f"{self.public_transcript()}\n\nAlive players: "
+                + ", ".join(f"Player_{p}" for p in self.alive) + ".")
         notes = " ".join(self.private_notes[player_id])
-        role = f"You are Player_{player_id}. Private Role: {self.roles[player_id]}."
+        role = f"\nYou are Player_{player_id}. Private Role: {self.roles[player_id]}."
         if notes:
             role += f" Private Notes: {notes}"
         if self.phase == "night":
@@ -92,9 +120,9 @@ class DethyEnv:
         else:
             phase = f"Day {self.day} Vote (answer with the ID of the player to eliminate)"
         if think:  # private reasoning stage; the decision stage re-uses this prompt as its prefix
-            return (f"{self.public_transcript()}\n{role} Phase: {phase}. "
+            return (f"{head}\n{role} Phase: {phase}. "
                     "First think privately about who is the Mafia, then stop. Thoughts:")
-        return f"{self.public_transcript()}\n{role} Phase: {phase}. Action:"
+        return f"{head}\n{role} Phase: {phase}. Action:"
 
     # --------------------------------------------------------------- helpers
     def _sanity_result(self, sanity: str, target: int) -> bool:
@@ -113,14 +141,16 @@ class DethyEnv:
             r[p] += mafia if role == "Mafia" else town
 
     def _begin_day(self) -> None:
-        self.transcript.append(f"Day {self.day} begins.")
         self.num_rounds = self.rng.randint(self.min_rounds, self.max_rounds)
+        self.transcript.append(f"\n=== Day {self.day}: Discussion ({self.num_rounds} round"
+                               f"{'s' if self.num_rounds > 1 else ''}) ===")
         self.round = 0
         self.phase = "dialogue"
         self._next_round()
 
     def _next_round(self) -> None:
         self.round += 1
+        self.transcript.append(f"\n-- Round {self.round} of {self.num_rounds} --")
         self.speakers = self.alive[:]
         self.rng.shuffle(self.speakers)  # fresh random speaking order every round
 
@@ -145,9 +175,9 @@ class DethyEnv:
         if victim not in self.alive or victim == mafia:
             victim = self.rng.choice([p for p in self.alive if p != mafia])
         self.alive.remove(victim)
-        self.transcript.append(f"Player_{victim} was killed in the night by the Mafia.")
+        self.transcript.append(f"Player_{victim} was killed in the night by the Mafia and is out of the game.")
         if len(self.alive) <= 2:
-            self.transcript.append("The Mafia has reached parity. Mafia wins!")
+            self.transcript.append("\nOnly 2 players are left. The Mafia wins!")
             self.done, self.winner = True, "Mafia"
             self._team(r, -self.rw.parity, self.rw.parity)
             return dict(r), True
@@ -165,6 +195,7 @@ class DethyEnv:
                 self._next_round()
             else:
                 self.phase = "vote"
+                self.transcript.append(f"\n=== Day {self.day}: Vote ===")
 
     def step_vote(self, votes: Dict[int, int]) -> Tuple[Dict[int, float], bool]:
         """Returns (per-player rewards, game_over)."""
@@ -191,14 +222,14 @@ class DethyEnv:
         self.alive.remove(victim)
 
         if self.roles[victim] == "Mafia":
-            self.transcript.append(f"Player_{victim} was eliminated and was the Mafia. Town wins!")
+            self.transcript.append(f"\nPlayer_{victim} was eliminated and was the Mafia. The Cops win!")
             self.done, self.winner = True, "Town"
             self._team(r, self.rw.lynch_mafia, -self.rw.lynch_mafia)
             return dict(r), True
 
-        self.transcript.append(f"Player_{victim} was eliminated and was not the Mafia.")
+        self.transcript.append(f"\nPlayer_{victim} was eliminated and was not the Mafia.")
         if len(self.alive) <= 2:
-            self.transcript.append("The Mafia has reached parity. Mafia wins!")
+            self.transcript.append("\nOnly 2 players are left. The Mafia wins!")
             self.done, self.winner = True, "Mafia"
             self._team(r, -self.rw.parity, self.rw.parity)
             return dict(r), True
@@ -206,5 +237,5 @@ class DethyEnv:
         self._team(r, -self.rw.lynch_town, self.rw.lynch_town)
         self.day += 1
         self.phase = "night"
-        self.transcript.append(f"Night {self.day} begins.")
+        self.transcript.append(f"\n=== Night {self.day} ===")
         return dict(r), False

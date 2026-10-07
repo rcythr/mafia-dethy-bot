@@ -63,7 +63,9 @@ Each epoch:
 ### Prompts
 
 ```
-[shared public transcript]
+[shared public transcript, starting with the full rules]
+Alive players: Player_0, ...
+
 You are Player_i. Private Role: <role>. Private Notes: <investigation results>  Phase: <phase>. Action:
 ```
 
