@@ -45,7 +45,7 @@ env:
     investigate_mafia_bonus: 0.1
 
 model:
-  name: unsloth/Llama-3.2-3B-Instruct
+  name: google/gemma-4-E4B-it
   max_tokens: 96           # max new tokens for a dialogue turn
   max_model_len: 4096
   gradient_checkpointing: true  # set false on big-memory GPUs (e.g. DGX Spark): ~25% faster training steps, more activation memory
