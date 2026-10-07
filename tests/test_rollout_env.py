@@ -6,8 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.rollout import collect_trajectories  # noqa: E402
-from src.vllm_worker import AgentResponse  # noqa: E402
+from dethy_rl.rollout import collect_trajectories  # noqa: E402
+from dethy_rl.vllm_worker import AgentResponse  # noqa: E402
 
 
 class FakeTok:

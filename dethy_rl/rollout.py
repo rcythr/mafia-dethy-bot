@@ -2,8 +2,8 @@
 import asyncio
 from typing import Any, Dict, List
 
-from src.env import DethyEnv
-from src.vllm_worker import AgentRequest
+from dethy_rl.env import DethyEnv
+from dethy_rl.vllm_worker import AgentRequest
 
 
 async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore) -> Dict[str, Any]:

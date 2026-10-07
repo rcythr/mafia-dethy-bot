@@ -3,7 +3,7 @@ import asyncio
 import hydra
 from omegaconf import DictConfig
 
-from src.train import run_training
+from dethy_rl.train import run_training
 
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)

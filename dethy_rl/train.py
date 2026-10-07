@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 import torch
 import torch.nn.functional as F
 
-from src.rollout import collect_trajectories
+from dethy_rl.rollout import collect_trajectories
 
 
 def compute_gae(rewards: List[float], values: List[float], gamma: float, lam: float):
@@ -107,8 +107,8 @@ def ppo_update(agent, optimizer, steps: List[Dict], cfg) -> Dict[str, float]:
 
 
 async def run_training(cfg) -> None:
-    from src.agent import DethyAgent
-    from src.vllm_worker import VllmWorker
+    from dethy_rl.agent import DethyAgent
+    from dethy_rl.vllm_worker import VllmWorker
 
     # vLLM first: it reserves its GPU slice (gpu_memory_utilization), trainer takes the rest.
     worker = VllmWorker(cfg)
