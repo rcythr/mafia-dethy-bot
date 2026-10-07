@@ -186,7 +186,7 @@ class DethyEnv:
         if victim not in self.alive or victim == mafia:
             victim = self.rng.choice([p for p in self.alive if p != mafia])
         self.alive.remove(victim)
-        self.transcript.append(f"Player_{victim} was killed in the night by the Mafia and is out of the game.")
+        self.transcript.append(f"\nPlayer_{victim} was killed in the night by the Mafia and is out of the game.")
         if len(self.alive) <= 2:
             self.transcript.append("\nOnly 2 players are left. The Mafia wins!")
             self.done, self.winner = True, "Mafia"
@@ -199,7 +199,7 @@ class DethyEnv:
     def step_dialogue(self, player_id: int, message: str) -> None:
         assert self.phase == "dialogue" and self.speakers and self.speakers[0] == player_id
         msg = " ".join(message.split()) or "..."
-        self.transcript.append(f"Player_{player_id}: {msg}")
+        self.transcript.append(f"\nPlayer_{player_id}: {msg}")  # blank line between messages so viewers show separate paragraphs
         self.speakers.pop(0)
         if not self.speakers:
             if self.round < self.num_rounds:
@@ -215,7 +215,7 @@ class DethyEnv:
         for p in self.alive:  # invalid votes get a random valid vote
             valid.setdefault(p, self.rng.choice(self.allowed_targets(p)))
         self.transcript.append(
-            f"Votes:\n" + "\n".join(f"Player_{p} voted for Player_{v}" for p, v in sorted(valid.items()))
+            f"Votes:\n" + "\n".join(f"\nPlayer_{p} voted for Player_{v}" for p, v in sorted(valid.items()))
         )
         counts = Counter(valid.values())
         mafia = self.mafia_id
