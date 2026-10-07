@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import random
+import shutil
 import time
 from collections import defaultdict
 from typing import Dict, List
@@ -209,6 +210,12 @@ async def run_training(cfg) -> None:
             path = os.path.join(adapter_dir, f"epoch_{epoch}")
             save_checkpoint(agent, optimizer, path, epoch, run.info.run_id)
             worker.set_lora(path, lora_id=epoch + 1)
+            # Keep disk use bounded on long runs: drop old per-epoch checkpoints, but keep the newest
+            # `keep_checkpoints` and every artifact_every-th epoch as a milestone.
+            keep = cfg.training.get("keep_checkpoints", 3)
+            stale = epoch - keep
+            if keep > 0 and stale >= 0 and (stale + 1) % cfg.training.get("artifact_every", 10) != 0:
+                shutil.rmtree(os.path.join(adapter_dir, f"epoch_{stale}"), ignore_errors=True)
             if (epoch + 1) % cfg.training.get("artifact_every", 10) == 0 or epoch == cfg.training.epochs - 1:
                 _safe(mlflow.log_artifacts, path, artifact_path=f"adapters/epoch_{epoch}")
             del steps, batch

@@ -149,7 +149,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert FakeWorker.lora_ids[0] == 2, FakeWorker.lora_ids     # engine pointed at epoch_1's adapter first
     assert FakeWorker.lora_ids[-1] == 4                         # then epoch_2, epoch_3 -> ids 3, 4
     done = sorted(p.name for p in Path(tmp, "adapters").iterdir())
-    assert done == ["epoch_0", "epoch_1", "epoch_2", "epoch_3"], done
+    assert done == ["epoch_1", "epoch_2", "epoch_3"], done   # keep_checkpoints=3 pruned epoch_0
 
     mlflow.set_tracking_uri(f"file:{tmp}/mlruns")
     runs = mlflow.search_runs(experiment_names=["dethy_mafia_ppo"], output_format="list")

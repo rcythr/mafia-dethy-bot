@@ -66,7 +66,7 @@ Every epoch saves a checkpoint (LoRA adapter, value head, optimizer state) to `a
 python main.py <same overrides> training.resume_from=adapters/<timestamp>
 ```
 
-It reloads the newest *complete* checkpoint (a crash mid-save is ignored), points vLLM at that adapter, continues at the next epoch with the LR schedule intact, and keeps logging to the same MLflow run. Games for each epoch are seeded from the epoch number, so a resumed run plays fresh games. MLflow logging failures (e.g. the tracking server being briefly unreachable) print a warning and do not stop training.
+To bound disk use, only the newest `training.keep_checkpoints` (3) epoch checkpoints are kept, plus every `artifact_every`-th epoch (10, 20, ...) as a milestone; set `keep_checkpoints=0` to keep everything. It reloads the newest *complete* checkpoint (a crash mid-save is ignored), points vLLM at that adapter, continues at the next epoch with the LR schedule intact, and keeps logging to the same MLflow run. Games for each epoch are seeded from the epoch number, so a resumed run plays fresh games. MLflow logging failures (e.g. the tracking server being briefly unreachable) print a warning and do not stop training.
 
 ## How it works
 

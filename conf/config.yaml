@@ -19,6 +19,7 @@ training:
   game_log_every: 1        # epochs between spectator game logs sent to MLflow (games/epoch_N/game_K.md)
   game_logs_per_epoch: 4   # how many games to log each time
   resume_from: null        # path of an earlier run's adapter dir: reload its newest complete checkpoint and continue
+  keep_checkpoints: 3      # newest N per-epoch checkpoints kept on disk (every artifact_every-th epoch is kept as a milestone); 0 = keep all
   artifact_every: 10       # epochs between MLflow adapter uploads
   value_warmup_epochs: 2   # epochs that train only the value head (critic warm-up)
   normalize_by_team: true  # normalise advantages separately for Mafia and Cops
