@@ -126,10 +126,9 @@ class DethyEnv:
         # public and identical for every player, so the prefix cache still covers it
         head = (f"{self.public_transcript()}\n\nAlive players: "
                 + ", ".join(f"Player_{p}" for p in self.alive) + ".")
-        notes = " ".join(self.private_notes[player_id])
-        role = f"\nYou are Player_{player_id}. Private Role: {self.roles[player_id]}."
-        if notes:
-            role += f" Private Notes: {notes}"
+        role = f"\nYou are Player_{player_id}.\nPrivate Role: {self.roles[player_id]}."
+        if self.private_notes[player_id]:
+            role += "\nPrivate Notes:\n" + "\n".join(f"- {n}" for n in self.private_notes[player_id])
         if self.phase == "night":
             verb = "kill" if self.roles[player_id] == "Mafia" else "investigate"
             phase = f"Night {self.day} (answer with the ID of the player to {verb})"
@@ -138,9 +137,9 @@ class DethyEnv:
         else:
             phase = f"Day {self.day} Vote (answer with the ID of the player to eliminate)"
         if think:  # private reasoning stage; the decision stage re-uses this prompt as its prefix
-            return (f"{head}\n{role} Phase: {phase}. "
-                    "First think privately about who is the Mafia, then stop. Thoughts:")
-        return f"{head}\n{role} Phase: {phase}. Action:"
+            return (f"{head}\n{role}\nPhase: {phase}.\n"
+                    "First think privately about who is the Mafia, then stop.\nThoughts:")
+        return f"{head}\n{role}\nPhase: {phase}.\nAction:"
 
     # --------------------------------------------------------------- helpers
     def _sanity_result(self, sanity: str, target: int) -> bool:

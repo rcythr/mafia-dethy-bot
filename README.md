@@ -70,7 +70,12 @@ Prompts go through the model's **chat template** (`model.use_chat_template`): th
 [shared public transcript, starting with the full rules]
 Alive players: Player_0, ...
 
-You are Player_i. Private Role: <role>. Private Notes: <investigation results>  Phase: <phase>. Action:
+You are Player_i.
+Private Role: <role>.
+Private Notes:
+- <one investigation result per line>
+Phase: <phase>.
+Action:
 ```
 
 The public transcript comes **first** and is byte-identical for every player, so vLLM's prefix cache reuses its KV across all agents. Everything private goes after it.
