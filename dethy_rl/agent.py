@@ -6,6 +6,8 @@ import torch.nn as nn
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM
 
+from dethy_rl.lora_targets import select_lora_targets
+
 
 class DethyAgent(nn.Module):
     def __init__(self, cfg):
@@ -17,9 +19,11 @@ class DethyAgent(nn.Module):
         base.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         base.enable_input_require_grads()
         base.config.use_cache = False
+        targets = select_lora_targets(base, cfg.lora.target_modules)
+        print(f"LoRA targets: {len(targets)} entries")
         lora = LoraConfig(
             r=cfg.lora.r, lora_alpha=cfg.lora.alpha, lora_dropout=cfg.lora.dropout,
-            target_modules=list(cfg.lora.target_modules), task_type="CAUSAL_LM",
+            target_modules=targets, task_type="CAUSAL_LM",
         )
         self.policy_net = get_peft_model(base, lora)
         hidden = base.config.hidden_size
