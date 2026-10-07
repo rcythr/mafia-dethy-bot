@@ -14,11 +14,17 @@ except ImportError:
 for m in ("mlflow", "omegaconf"):  # train.py imports these at module level; not needed here
     if m not in sys.modules:
         sys.modules[m] = types.SimpleNamespace(OmegaConf=None)
-from dethy_rl.train import annotate_advantages, compute_gae, ppo_update  # noqa: E402
+from dethy_rl.train import annotate_advantages, compute_gae, lr_at, ppo_update  # noqa: E402
 
 # GAE: single terminal reward, gamma=lambda=1 => advantage = return - value
 adv, ret = compute_gae([0, 0, 1.0], [0.1, 0.2, 0.3], 1.0, 1.0)
 assert all(abs(r - 1.0) < 1e-9 for r in ret), ret
+
+lcfg = NS(training=NS(learning_rate=1e-4, lr_warmup_epochs=5, lr_min_ratio=0.1, epochs=100))
+lrs = [lr_at(e, lcfg) for e in range(100)]
+assert lrs[0] < lrs[4] < lrs[5] and abs(lrs[5] - 1e-4) < 1e-12      # warmup rises to the peak
+assert all(a >= b for a, b in zip(lrs[5:], lrs[6:]))               # then only decays
+assert abs(lrs[-1] - 1e-5) < 1e-9                                  # ends at the floor
 
 V = 12
 

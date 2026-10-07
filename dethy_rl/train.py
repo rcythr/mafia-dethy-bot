@@ -1,6 +1,7 @@
 """PPO + GAE training loop with LoRA weight sync to the vLLM engine."""
 import asyncio
 import gc
+import math
 import os
 import random
 from collections import defaultdict
@@ -26,6 +27,16 @@ def compute_gae(rewards: List[float], values: List[float], gamma: float, lam: fl
         adv[t] = last
     returns = [a + v for a, v in zip(adv, values)]
     return adv, returns
+
+
+def lr_at(epoch: int, cfg) -> float:
+    """Linear warmup to the base LR, then cosine decay down to base * lr_min_ratio."""
+    t, base = cfg.training, cfg.training.learning_rate
+    if epoch < t.lr_warmup_epochs:
+        return base * (epoch + 1) / (t.lr_warmup_epochs + 1)
+    progress = (epoch - t.lr_warmup_epochs) / max(1, t.epochs - 1 - t.lr_warmup_epochs)
+    floor = t.lr_min_ratio
+    return base * (floor + (1 - floor) * 0.5 * (1 + math.cos(math.pi * min(progress, 1.0))))
 
 
 def _ids(step, device):
@@ -142,12 +153,15 @@ async def run_training(cfg) -> None:
         mlflow.log_params({f"{sec}.{k}": v for sec, d in flat.items() if isinstance(d, dict)
                            for k, v in d.items() if sec != "hydra"})
         for epoch in range(cfg.training.epochs):
+            lr = lr_at(epoch, cfg)
+            for group in optimizer.param_groups:
+                group["lr"] = lr
             batch = await collect_trajectories(worker, cfg)
             steps = batch["steps"]
             adv_stats = annotate_advantages(agent, steps, cfg)
             warmup = epoch < cfg.training.value_warmup_epochs  # fit the critic before trusting its advantages
             stats = ppo_update(agent, optimizer, steps, cfg, train_policy=not warmup)
-            stats.update(adv_stats)
+            stats.update(adv_stats, learning_rate=lr)
             stats.update({k: batch[k] for k in (
                 "avg_episode_reward", "town_win_rate", "vote_mafia_rate_sane",
                 "vote_mafia_rate_other_cops", "avg_dialogue_tokens")}, avg_steps_per_game=batch["avg_game_len"])

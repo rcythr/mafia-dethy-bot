@@ -6,7 +6,9 @@ experiment:
 training:
   epochs: 100
   games_per_epoch: 32
-  learning_rate: 1.0e-4
+  learning_rate: 1.0e-4    # peak LR
+  lr_warmup_epochs: 5      # linear ramp up to the peak
+  lr_min_ratio: 0.1        # cosine decay floor, as a fraction of the peak
   ppo_clip: 0.2
   kl_coef: 0.1
   entropy_coef: 0.01
