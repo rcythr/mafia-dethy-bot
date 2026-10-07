@@ -7,9 +7,11 @@ from dethy_rl.tracing import span
 from dethy_rl.vllm_worker import AgentRequest
 
 
-async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore, trace: bool = False) -> Dict[str, Any]:
+async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore, trace: bool = False,
+                    epoch: int = 0) -> Dict[str, Any]:
     async with sem:
-        env = DethyEnv(seed=cfg.rollout.seed * 1_000_003 + lobby_id, rewards=dict(cfg.env.rewards),
+        # epoch is part of the seed so every epoch sees fresh role assignments and draws
+        env = DethyEnv(seed=(cfg.rollout.seed * 1_000_003 + epoch) * 100_003 + lobby_id, rewards=dict(cfg.env.rewards),
                        min_rounds=cfg.env.min_dialogue_rounds, max_rounds=cfg.env.max_dialogue_rounds)
         steps: List[Dict[str, Any]] = []
         last_step: Dict[int, Dict[str, Any]] = {}
@@ -77,20 +79,20 @@ async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore, trace: b
             "transcript": env.public_transcript() + "\nRoles: " + ", ".join(f"Player_{p}={r}" for p, r in env.roles.items())}
 
 
-async def _traced_lobby(lobby_id: int, worker, cfg, sem, trace: bool) -> Dict[str, Any]:
+async def _traced_lobby(lobby_id: int, worker, cfg, sem, trace: bool, epoch: int) -> Dict[str, Any]:
     """One MLflow trace per traced game; every LLM call in it becomes a child span."""
     with span(f"lobby_{lobby_id}", "CHAIN", trace) as sp:
-        out = await run_lobby(lobby_id, worker, cfg, sem, trace)
+        out = await run_lobby(lobby_id, worker, cfg, sem, trace, epoch)
         if sp is not None:
             sp.set_outputs({"winner": out["winner"], "roles": out["roles"], "returns": out["returns"],
                             "transcript": out["transcript"]})
     return out
 
 
-async def collect_trajectories(worker, cfg, trace: bool = False) -> Dict[str, Any]:
+async def collect_trajectories(worker, cfg, trace: bool = False, epoch: int = 0) -> Dict[str, Any]:
     sem = asyncio.Semaphore(cfg.rollout.max_concurrent_lobbies)
     n_traced = cfg.tracing.lobbies_per_epoch if trace else 0
-    games = await asyncio.gather(*(_traced_lobby(i, worker, cfg, sem, i < n_traced)
+    games = await asyncio.gather(*(_traced_lobby(i, worker, cfg, sem, i < n_traced, epoch)
                                    for i in range(cfg.training.games_per_epoch)))
     steps = [s for g in games for s in g["steps"]]
     all_returns = [r for g in games for r in g["returns"].values()]

@@ -59,6 +59,13 @@ for traj in by.values():
             assert b2["prompt_ids"][:len(a["prompt_ids"]) + len(a["action_ids"])] == a["prompt_ids"] + a["action_ids"]
 assert sum(s["phase"] == "think" for s in bt["steps"]) > 0 and bt["avg_think_tokens"] == 2
 cfg.env.think_tokens = 0
+# different epochs must produce different role assignments for the same lobby ids
+def roles_of(batch):
+    return tuple(sorted({(s["lobby_id"], s["player_id"], s["role"]) for s in batch["steps"]}))
+e0 = asyncio.run(collect_trajectories(FakeWorker(), cfg, epoch=0))
+e0b = asyncio.run(collect_trajectories(FakeWorker(), cfg, epoch=0))
+e1 = asyncio.run(collect_trajectories(FakeWorker(), cfg, epoch=1))
+assert roles_of(e0) == roles_of(e0b) and roles_of(e0) != roles_of(e1)
 print(len(b["steps"]), b["town_win_rate"], b["avg_episode_reward"])
 
 

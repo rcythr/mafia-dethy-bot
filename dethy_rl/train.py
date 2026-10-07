@@ -162,7 +162,7 @@ async def run_training(cfg) -> None:
             for group in optimizer.param_groups:
                 group["lr"] = lr
             trace = cfg.tracing.enabled and epoch % cfg.tracing.every_n_epochs == 0
-            batch = await collect_trajectories(worker, cfg, trace=trace)
+            batch = await collect_trajectories(worker, cfg, trace=trace, epoch=epoch)
             steps = batch["steps"]
             adv_stats = annotate_advantages(agent, steps, cfg)
             warmup = epoch < cfg.training.value_warmup_epochs  # fit the critic before trusting its advantages
