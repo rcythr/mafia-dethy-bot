@@ -21,25 +21,37 @@ async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore) -> Dict[
                 if p in last_step:  # credit the player's most recent decision
                     last_step[p]["reward"] += r
 
+        def record(req, resp, phase: str) -> None:
+            step = dict(
+                lobby_id=lobby_id, player_id=req.player_id, role=env.roles[req.player_id], phase=phase,
+                prompt_ids=req.prompt_ids, action_ids=resp.action_ids,
+                old_log_probs=resp.old_log_probs, allowed_token_ids=resp.allowed_token_ids,
+                reward=0.0, done=False,
+            )
+            steps.append(step)
+            last_step[req.player_id] = step
+
+        think = cfg.env.think_tokens > 0
         while not env.done:
             phase = env.phase
-            reqs = []
-            for pid in env.acting_players():
-                reqs.append(AgentRequest(pid, worker.encode(env.build_prompt(pid)), phase,
-                                         env.allowed_targets(pid)))
+            pids = env.acting_players()
+            base_ids = {pid: worker.encode(env.build_prompt(pid)) for pid in pids}
+            if think and phase in ("night", "vote"):
+                # Stage 1: private reasoning (trained like any other action). Stage 2's prompt extends
+                # stage 1's ids exactly, so training sees what the policy saw and the prefix cache hits.
+                treqs = [AgentRequest(pid, worker.encode(env.build_prompt(pid, think=True)), "think")
+                         for pid in pids]
+                for treq, tresp in zip(treqs, await worker.generate_agent_responses(treqs)):
+                    record(treq, tresp, "think")
+                    base_ids[treq.player_id] = (treq.prompt_ids + tresp.action_ids
+                                                + worker.encode_suffix("\n</think>\nAction:"))
+            reqs = [AgentRequest(pid, base_ids[pid], phase, env.allowed_targets(pid)) for pid in pids]
             # every await yields to the event loop so other lobbies make progress
             resps = await worker.generate_agent_responses(reqs)
 
             actions: Dict[int, Any] = {}
             for req, resp in zip(reqs, resps):
-                step = dict(
-                    lobby_id=lobby_id, player_id=req.player_id, role=env.roles[req.player_id], phase=phase,
-                    prompt_ids=req.prompt_ids, action_ids=resp.action_ids,
-                    old_log_probs=resp.old_log_probs, allowed_token_ids=resp.allowed_token_ids,
-                    reward=0.0, done=False,
-                )
-                steps.append(step)
-                last_step[req.player_id] = step
+                record(req, resp, phase)
                 if phase == "dialogue":
                     actions[req.player_id] = resp.text
                 else:
@@ -75,10 +87,12 @@ async def collect_trajectories(worker, cfg) -> Dict[str, Any]:
         return sum(xs) / len(xs) if xs else float("nan")
 
     dlg = [len(s["action_ids"]) for s in steps if s["phase"] == "dialogue"]
+    thk = [len(s["action_ids"]) for s in steps if s["phase"] == "think"]
     return dict(
         vote_mafia_rate_sane=rate({"Sane"}),            # should climb well above chance (~0.25)
         vote_mafia_rate_other_cops=rate({"Insane", "Naive", "Paranoid"}),
         avg_dialogue_tokens=sum(dlg) / max(len(dlg), 1),
+        avg_think_tokens=sum(thk) / max(len(thk), 1),
         steps=steps,
         town_win_rate=sum(g["winner"] == "Town" for g in games) / len(games),
         avg_episode_reward=sum(all_returns) / len(all_returns),

@@ -75,7 +75,7 @@ class DethyEnv:
     def public_transcript(self) -> str:
         return "\n".join(self.transcript)
 
-    def build_prompt(self, player_id: int) -> str:
+    def build_prompt(self, player_id: int, think: bool = False) -> str:
         """[Shared Public Transcript] + \\nPrivate Role: [Role]. Phase: [Phase]. Action:
 
         The transcript is byte-identical across agents so vLLM can reuse the prefix KV cache.
@@ -91,6 +91,9 @@ class DethyEnv:
             phase = f"Day {self.day} Dialogue round {self.round}/{self.num_rounds} (say one short public message)"
         else:
             phase = f"Day {self.day} Vote (answer with the ID of the player to eliminate)"
+        if think:  # private reasoning stage; the decision stage re-uses this prompt as its prefix
+            return (f"{self.public_transcript()}\n{role} Phase: {phase}. "
+                    "First think privately about who is the Mafia, then stop. Thoughts:")
         return f"{self.public_transcript()}\n{role} Phase: {phase}. Action:"
 
     # --------------------------------------------------------------- helpers

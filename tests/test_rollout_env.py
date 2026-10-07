@@ -18,6 +18,9 @@ class FakeTok:
 class FakeWorker:
     tokenizer = FakeTok()
 
+    def encode_suffix(self, text):
+        return [7, 8]
+
     def encode(self, text):
         return [ord(c) % 255 for c in text[-20:]]
 
@@ -25,7 +28,7 @@ class FakeWorker:
         await asyncio.sleep(0)
         out = []
         for r in reqs:
-            if r.phase == "dialogue":
+            if r.phase in ("dialogue", "think"):
                 out.append(AgentResponse(r.player_id, [104, 105], [-1.0, -1.0], "hi"))
             else:
                 t = random.choice(r.allowed_players)
@@ -34,9 +37,22 @@ class FakeWorker:
 
 
 cfg = NS(rollout=NS(seed=1, max_concurrent_lobbies=8), training=NS(games_per_epoch=16),
-         env=NS(rewards={}, min_dialogue_rounds=1, max_dialogue_rounds=3))
+         env=NS(rewards={}, min_dialogue_rounds=1, max_dialogue_rounds=3, think_tokens=0))
 b = asyncio.run(collect_trajectories(FakeWorker(), cfg))
 assert b["steps"] and sum(s["done"] for s in b["steps"]) == 16 * 5
+# thinking on: think steps precede each night/vote decision and the decision prompt extends the think prompt
+cfg.env.think_tokens = 8
+bt = asyncio.run(collect_trajectories(FakeWorker(), cfg))
+by = {}
+for s in bt["steps"]:
+    by.setdefault((s["lobby_id"], s["player_id"]), []).append(s)
+for traj in by.values():
+    for a, b2 in zip(traj, traj[1:]):
+        if a["phase"] == "think":
+            assert b2["phase"] in ("night", "vote")
+            assert b2["prompt_ids"][:len(a["prompt_ids"]) + len(a["action_ids"])] == a["prompt_ids"] + a["action_ids"]
+assert sum(s["phase"] == "think" for s in bt["steps"]) > 0 and bt["avg_think_tokens"] == 2
+cfg.env.think_tokens = 0
 print(len(b["steps"]), b["town_win_rate"], b["avg_episode_reward"])
 
 

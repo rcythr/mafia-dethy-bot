@@ -164,7 +164,7 @@ async def run_training(cfg) -> None:
             stats.update(adv_stats, learning_rate=lr)
             stats.update({k: batch[k] for k in (
                 "avg_episode_reward", "town_win_rate", "vote_mafia_rate_sane",
-                "vote_mafia_rate_other_cops", "avg_dialogue_tokens")}, avg_steps_per_game=batch["avg_game_len"])
+                "vote_mafia_rate_other_cops", "avg_dialogue_tokens", "avg_think_tokens")}, avg_steps_per_game=batch["avg_game_len"])
             mlflow.log_metrics(stats, step=epoch)
             print(f"epoch {epoch}: " + " ".join(f"{k}={v:.4f}" for k, v in stats.items()))
 

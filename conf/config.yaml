@@ -26,6 +26,7 @@ training:
 env:
   min_dialogue_rounds: 1
   max_dialogue_rounds: 3
+  think_tokens: 0            # >0: private reasoning (max tokens) before each night action and vote
   rewards:                      # see RewardConfig in dethy_rl/env.py
     lynch_mafia: 1.0
     parity: 1.0

@@ -29,7 +29,7 @@ class VllmVoteLogitsProcessor:
 class AgentRequest:
     player_id: int
     prompt_ids: List[int]
-    phase: str                      # "night" | "dialogue" | "vote"
+    phase: str                      # "night" | "dialogue" | "vote" | "think"
     allowed_players: List[int] = field(default_factory=list)
 
 
@@ -87,6 +87,9 @@ class VllmWorker:
     def encode(self, text: str) -> List[int]:
         return self.tokenizer.encode(text, add_special_tokens=True)
 
+    def encode_suffix(self, text: str) -> List[int]:
+        return self.tokenizer.encode(text, add_special_tokens=False)
+
     # ------------------------------------------------------------- generation
     def _sampling_params(self, req: AgentRequest):
         from vllm import SamplingParams
@@ -94,6 +97,8 @@ class VllmWorker:
         common = dict(temperature=self.cfg.rollout.temperature, top_p=1.0, top_k=-1, logprobs=1)
         if req.phase == "dialogue":
             return SamplingParams(max_tokens=self.cfg.model.max_tokens, stop=["\n"], **common), None
+        if req.phase == "think":
+            return SamplingParams(max_tokens=self.cfg.env.think_tokens, stop=["</think>"], **common), None
         allowed = self.digit_token_ids(req.allowed_players)
         if self.cfg.vllm.vote_mask_mode == "logits_processor":
             return SamplingParams(
