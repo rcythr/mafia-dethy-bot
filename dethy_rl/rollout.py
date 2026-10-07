@@ -72,7 +72,8 @@ async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore) -> Dict[
 
         for s in last_step.values():
             s["done"] = True
-        return {"steps": steps, "winner": env.winner, "returns": returns, "roles": env.roles, "votes": vote_log}
+        return {"steps": steps, "winner": env.winner, "returns": returns, "roles": env.roles, "votes": vote_log,
+            "transcript": env.public_transcript() + "\nRoles: " + ", ".join(f"Player_{p}={r}" for p, r in env.roles.items())}
 
 
 async def collect_trajectories(worker, cfg) -> Dict[str, Any]:
@@ -94,6 +95,7 @@ async def collect_trajectories(worker, cfg) -> Dict[str, Any]:
         avg_dialogue_tokens=sum(dlg) / max(len(dlg), 1),
         avg_think_tokens=sum(thk) / max(len(thk), 1),
         steps=steps,
+        sample_transcripts=[g["transcript"] for g in games[:2]],
         town_win_rate=sum(g["winner"] == "Town" for g in games) / len(games),
         avg_episode_reward=sum(all_returns) / len(all_returns),
         avg_game_len=len(steps) / len(games),
