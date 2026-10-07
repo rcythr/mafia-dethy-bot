@@ -38,6 +38,7 @@ HOW TO PLAY
 HOW TO ANSWER
 - Night and Vote phases: answer with a single digit, the ID of a living player (for example: 3). Nothing else.
 - Discussion phase: write one or two short sentences as yourself. Do not write your own name or "Player_N:" at the start.
+- Discussion is only talking. Nobody investigates or kills during the day: investigations and kills happen at night, and the day ends with a vote. Use the discussion to say who you suspect and why, to defend yourself, or to share (truthfully or not) what your investigations showed. Do not ask others to investigate.
 """
 
 
