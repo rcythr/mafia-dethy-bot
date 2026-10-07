@@ -46,12 +46,17 @@ def check_invariants(env):
     assert len(prefixes) == 1, "everything before the private line must be identical for all players"
     for p, pr in prompts.items():
         head, tail = pr.rsplit(marker, 1)
-        assert tail.startswith(f"{p}.\n\nPrivate Role: {env.roles[p]}.")      # transcript -> role -> phase
+        assert tail.startswith(f"{p}.\n\nPrivate Role: {env.private_role(p)}.")      # transcript -> role -> phase
         assert tail.rstrip().endswith("Action:")
         assert "\nPhase:" in tail and tail.index("Private Role") < tail.index("\nPhase:")
         for q in env.alive:
             if q != p:
                 assert f"You are Player_{q}." not in pr  # no leakage of other players' private lines
+        if env.roles[p] != "Mafia":  # a Cop is never told its own sanity type
+            assert env.roles[p] not in tail, (p, env.roles[p])
+            assert "Private Role: Cop." in tail
+        else:
+            assert "Private Role: Mafia." in tail
         for note in env.private_notes[p]:
             assert note in tail and note not in head
     msgs = env.build_messages(env.alive[0])

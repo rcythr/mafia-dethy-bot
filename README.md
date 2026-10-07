@@ -6,7 +6,7 @@ Trains a ~3B language model (`meta-llama/Llama-3.2-3B-Instruct`) to play **Dethy
 
 ## The game
 
-5 players: 1 **Mafia** and 4 **Cops**. Each Cop has a hidden sanity that decides what investigations tell them:
+5 players: 1 **Mafia** and 4 **Cops**. The four Cops have four different hidden sanity types, which decide what their investigations tell them. **Only the Mafia knows their true role: a Cop is told only that they are a Cop, not which type**, so a Cop can never be sure how far to trust their own results and has to cross-check with the other Cops:
 
 | Sanity   | Investigation result            |
 |----------|---------------------------------|
@@ -82,7 +82,7 @@ Prompts go through the model's **chat template** (`model.use_chat_template`): th
 Alive players: Player_0, ...
 
 You are Player_i.
-Private Role: <role>.
+Private Role: <Mafia or Cop>.
 Private Notes:
 - <one investigation result per line>
 Phase: <phase>.
@@ -141,7 +141,7 @@ Rewards are credited to the player's most recent decision (a night kill lands on
 - **Value head is fp32 and zero-initialised.** bf16 + AdamW at lr 1e-4 barely moves.
 - **Advantages normalised per team** (Mafia vs Cops): the lone Mafia has a different reward scale and less data.
 - **LR schedule:** linear warmup then cosine decay to 10% of peak (set per epoch).
-- **Diagnostics for "is it learning?":** `vote_mafia_rate_sane` (a Sane Cop knows the truth, so this should climb well above the ~0.25 chance level), `vote_mafia_rate_other_cops`, `explained_variance`, `clip_frac`, `approx_kl_old`, `kl`, `entropy`, dialogue/think lengths.
+- **Diagnostics for "is it learning?":** `vote_mafia_rate_sane` (Cops of the truthful Sane type, who do not know that they are Sane; their results are reliable, so this should climb well above the ~0.25 chance level as the model learns which reports to trust), `vote_mafia_rate_other_cops`, `explained_variance`, `clip_frac`, `approx_kl_old`, `kl`, `entropy`, dialogue/think lengths.
 
 **Game design**
 - Added the **Mafia night kill** and **1-3 sequential dialogue rounds with shuffled order** after the first version, so discussion has back-and-forth and the Mafia has agency.

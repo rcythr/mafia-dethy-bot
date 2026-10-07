@@ -12,12 +12,12 @@ _RULES_TEMPLATE = """You are playing Dethy Mafia, a social deduction game. There
 
 ROLES
 - One player is the Mafia. The other four are Cops. The Mafia wins by surviving; the Cops (the Town) win by eliminating the Mafia.
-- Each Cop has a hidden sanity that decides what their investigations tell them:
+- Each Cop has a hidden sanity type, and the four Cops have four different types. The type decides what their investigations tell them:
   * Sane: sees the truth ("Mafia" if the target is the Mafia, otherwise "Not Mafia").
   * Insane: sees the opposite of the truth (the Mafia looks like "Not Mafia", everyone else looks like "Mafia").
   * Naive: always sees "Not Mafia", whoever the target is, so a Naive result tells you nothing.
   * Paranoid: always sees "Mafia", whoever the target is, so a Paranoid result tells you nothing.
-- You always know your own role (and sanity, if you are a Cop). Nobody else's role or sanity is revealed unless you choose to say it, and you may lie.
+- Only the Mafia knows exactly who they are. The Mafia knows they are the Mafia. A Cop knows they are a Cop but does NOT know which sanity type they are, so a Cop can never be sure whether their own results are true, reversed or meaningless. Nobody's role or type is revealed unless a player chooses to say it, and players may lie.
 
 HOW THE GAME RUNS
 1. Night: every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their sanity). At the same time the Mafia kills one other player, who is out of the game.
@@ -31,15 +31,14 @@ HOW THE GAME ENDS
 
 WHAT YOU SEE
 - Everything above the line starting "You are Player_..." is public and visible to every player.
-- That line shows your Private Role and your Private Notes (your own investigation results). Only you can see them.
+- That line shows your Private Role ("Mafia" if you are the Mafia, otherwise "Cop") and your Private Notes (your own investigation results). Only you can see them.
 
 HOW TO PLAY
-- Cops: use your investigation results, but remember your own sanity when you interpret them (for example, an Insane Cop who sees "Not Mafia" should suspect the target). Share useful information, question inconsistent claims, and vote for who you believe is the Mafia. You cannot vote for, investigate or kill yourself.
+- Cops: your results are clues, not facts, because you do not know your own type. Compare notes: the four Cops all have different types, so what different Cops report about the same player can contradict each other in revealing ways. If you get the same answer for every player you investigate, you may be a Naive Cop (always "Not Mafia") or a Paranoid Cop (always "Mafia"). Share useful information, question inconsistent claims, and vote for who you believe is the Mafia. You cannot vote for, investigate or kill yourself.
 - Mafia: stay alive. Blend in, cast suspicion on others, and kill players who might expose you.
 
 EXAMPLE (placeholder names, only an illustration of the style: do not repeat its wording, and base what you say on your own game)
-Cop X is Sane and privately saw "Mafia" when investigating Z. During discussion X says that Z showed up as Mafia and asks for a vote against Z. Z denies it and accuses X of lying. Another Cop, Y, weighs who sounds more concrete and sides with one of them. At the vote, a player's whole answer is just the digit of the player they pick.
-Another Cop, W, is Insane and saw "Not Mafia" for V. Because Insane results are reversed, W privately concludes V is probably the Mafia, and may say V has seemed evasive without revealing the result. A Naive or Paranoid Cop knows their results are meaningless, so they should rely on what others say and may bluff.
+Cop X privately saw "Mafia" when investigating Z. During discussion X says that Z showed up as Mafia, adds that they cannot be sure their results are reliable, and asks for a vote against Z. Cop Y says they investigated Z too and saw "Not Mafia", so one of the two results must be unreliable. Z denies being the Mafia. Cop W notes that X also reported "Mafia" for another player last night, which makes X's results look less trustworthy, and suggests waiting for more information. At the vote, a player's whole answer is just the digit of the player they pick.
 
 HOW TO ANSWER
 - Night and Vote phases: answer with a single digit, the ID of a living player other than yourself (for example: 3). Nothing else.{NOLYNCH_ANSWER}
@@ -138,6 +137,11 @@ class DethyEnv:
             return self.speakers[:1]
         return list(self.alive)
 
+    def private_role(self, player_id: int) -> str:
+        """What the player is told about themselves: the Mafia knows it is the Mafia; a Cop only
+        knows it is a Cop (its sanity type stays hidden, even from itself)."""
+        return "Mafia" if self.roles[player_id] == "Mafia" else "Cop"
+
     def allowed_targets(self, player_id: int) -> List[int]:
         targets = [p for p in self.alive if p != player_id]  # never yourself, for kills, checks or votes
         if self.phase == "vote" and self.allow_no_lynch:
@@ -165,7 +169,7 @@ class DethyEnv:
         # public and identical for every player, so the prefix cache still covers it
         head = (f"{self.public_transcript()}\n\nAlive players: "
                 + ", ".join(f"Player_{p}" for p in self.alive) + ".")
-        role = f"\nYou are Player_{player_id}.\n\nPrivate Role: {self.roles[player_id]}."
+        role = f"\nYou are Player_{player_id}.\n\nPrivate Role: {self.private_role(player_id)}."
         if self.private_notes[player_id]:
             role += "\n\nPrivate Notes:\n\n" + "\n".join(f"- {n}" for n in self.private_notes[player_id])
         if self.phase == "night":
