@@ -46,7 +46,8 @@ model:
   name: unsloth/Llama-3.2-3B-Instruct
   max_tokens: 96           # max new tokens for a dialogue turn
   max_model_len: 4096
-  chat_template_kwargs: {}  # extra args for the chat template, e.g. {enable_thinking: false} for models with a thinking mode
+  chat_template_kwargs:     # extra chat-template args; templates ignore ones they don't use. Gemma 4 / Qwen3: turn built-in thinking off (we run our own scratchpad)
+    enable_thinking: false
   use_chat_template: true  # wrap prompts in the model's chat template (rules = system, rest = user)
 
 lora:
