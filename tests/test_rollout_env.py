@@ -33,7 +33,36 @@ class FakeWorker:
         return out
 
 
-cfg = NS(rollout=NS(seed=1, max_concurrent_lobbies=8), training=NS(games_per_epoch=16))
+cfg = NS(rollout=NS(seed=1, max_concurrent_lobbies=8), training=NS(games_per_epoch=16),
+         env=NS(rewards={}, min_dialogue_rounds=1, max_dialogue_rounds=3))
 b = asyncio.run(collect_trajectories(FakeWorker(), cfg))
 assert b["steps"] and sum(s["done"] for s in b["steps"]) == 16 * 5
 print(len(b["steps"]), b["town_win_rate"], b["avg_episode_reward"])
+
+
+# --- env rule checks: night kill, 1-3 dialogue rounds, random order per round
+from dethy_rl.env import DethyEnv  # noqa: E402
+
+rounds_seen, orders, kills = set(), set(), 0
+for seed in range(300):
+    env = DethyEnv(seed=seed)
+    while not env.done:
+        if env.phase == "night":
+            n = len(env.alive)
+            env.step_night({p: random.choice(env.allowed_targets(p)) for p in env.alive})
+            assert len(env.alive) == n - 1
+            kills += 1
+        elif env.phase == "dialogue":
+            rounds_seen.add(env.num_rounds)
+            seen = []
+            while env.phase == "dialogue":
+                p = env.acting_players()[0]
+                seen.append(p)
+                env.step_dialogue(p, "x")
+            assert len(seen) == env.num_rounds * len(env.alive)
+            orders.add(tuple(seen[:len(env.alive)]))
+        else:
+            env.step_vote({p: random.choice(env.alive) for p in env.alive})
+    assert env.winner in ("Town", "Mafia")
+assert rounds_seen == {1, 2, 3} and len(orders) > 5 and kills > 0
+print("env checks ok")

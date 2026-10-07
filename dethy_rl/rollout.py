@@ -8,7 +8,8 @@ from dethy_rl.vllm_worker import AgentRequest
 
 async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore) -> Dict[str, Any]:
     async with sem:
-        env = DethyEnv(seed=cfg.rollout.seed * 1_000_003 + lobby_id)
+        env = DethyEnv(seed=cfg.rollout.seed * 1_000_003 + lobby_id, rewards=dict(cfg.env.rewards),
+                       min_rounds=cfg.env.min_dialogue_rounds, max_rounds=cfg.env.max_dialogue_rounds)
         steps: List[Dict[str, Any]] = []
         last_step: Dict[int, Dict[str, Any]] = {}
         returns = {p: 0.0 for p in env.roles}
@@ -45,9 +46,11 @@ async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore) -> Dict[
                     actions[req.player_id] = int(tok) if tok.isdigit() else -1
 
             if phase == "night":
-                env.step_night(actions)
+                rewards, _ = env.step_night(actions)
+                add_reward(rewards)
             elif phase == "dialogue":
-                env.step_dialogue(actions)
+                for pid, text in actions.items():  # one speaker per turn, random order from env
+                    env.step_dialogue(pid, text)
             else:
                 rewards, _ = env.step_vote(actions)
                 add_reward(rewards)

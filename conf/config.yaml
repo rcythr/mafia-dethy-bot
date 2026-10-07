@@ -19,6 +19,19 @@ training:
   max_grad_norm: 1.0
   masked_vote_logprobs: true  # train-time vote log-probs use the same alive-digit mask as sampling
 
+env:
+  min_dialogue_rounds: 1
+  max_dialogue_rounds: 3
+  rewards:                      # see RewardConfig in dethy_rl/env.py
+    lynch_mafia: 1.0
+    parity: 1.0
+    lynch_town: 0.2
+    night_kill: 0.2
+    heat: 0.3
+    vote_mafia_bonus: 0.2
+    vote_town_penalty: 0.05
+    investigate_mafia_bonus: 0.1
+
 model:
   name: meta-llama/Llama-3.2-3B-Instruct
   max_tokens: 64           # max new tokens for a dialogue turn
