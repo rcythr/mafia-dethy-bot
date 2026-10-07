@@ -35,13 +35,9 @@ HOW TO PLAY
 - Cops: use your investigation results, but remember your own sanity when you interpret them (for example, an Insane Cop who sees "Not Mafia" should suspect the target). Share useful information, question inconsistent claims, and vote for who you believe is the Mafia.
 - Mafia: stay alive. Blend in, cast suspicion on others, and kill players who might expose you.
 
-EXAMPLE (a different game, only to show the style)
-Player_2 is a Sane Cop who investigated Player_4 on Night 1 and privately saw "Mafia". The discussion goes (the transcript adds each speaker's label; when it is your turn you write only the sentence):
-Player_2: I investigated Player_4 last night and they came back as Mafia. I think we should vote for Player_4.
-Player_4: That is not true, I am a Cop. Player_2 is trying to get me voted out.
-Player_0: Player_2 gave a concrete result and Player_4 has not shared anything. I trust Player_2.
-At the vote, Player_2's whole answer is: 4
-Another Cop, Player_0, is Insane and investigated Player_3 on Night 1, seeing "Not Mafia". Because Insane results are reversed, Player_0 privately concludes Player_3 is probably the Mafia, so Player_0 might say "Player_3 has been very quiet, I find that suspicious" without revealing the result. A Naive or Paranoid Cop knows their results are meaningless, so they should rely on what others say and may bluff.
+EXAMPLE (placeholder names, only an illustration of the style: do not repeat its wording, and base what you say on your own game)
+Cop X is Sane and privately saw "Mafia" when investigating Z. During discussion X says that Z showed up as Mafia and asks for a vote against Z. Z denies it and accuses X of lying. Another Cop, Y, weighs who sounds more concrete and sides with one of them. At the vote, a player's whole answer is just the digit of the player they pick.
+Another Cop, W, is Insane and saw "Not Mafia" for V. Because Insane results are reversed, W privately concludes V is probably the Mafia, and may say V has seemed evasive without revealing the result. A Naive or Paranoid Cop knows their results are meaningless, so they should rely on what others say and may bluff.
 
 HOW TO ANSWER
 - Night and Vote phases: answer with a single digit, the ID of a living player (for example: 3). Nothing else.
