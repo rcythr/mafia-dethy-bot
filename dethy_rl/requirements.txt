@@ -1,0 +1,9 @@
+torch
+transformers>=4.45
+peft
+bitsandbytes
+accelerate
+vllm
+hydra-core
+omegaconf
+mlflow

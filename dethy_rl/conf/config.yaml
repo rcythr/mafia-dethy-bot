@@ -1,0 +1,52 @@
+experiment:
+  name: dethy_mafia_ppo
+  tracking_uri: "file:./mlruns"
+
+training:
+  epochs: 100
+  games_per_epoch: 32
+  learning_rate: 1.0e-4
+  ppo_clip: 0.2
+  kl_coef: 0.1
+  entropy_coef: 0.01
+  value_coef: 0.5
+  gamma: 0.99
+  gae_lambda: 0.95
+  ppo_epochs: 1            # passes over each rollout batch
+  grad_accum_steps: 8      # trajectory steps per optimizer step (batch size is 1 sequence)
+  max_grad_norm: 1.0
+  masked_vote_logprobs: true  # train-time vote log-probs use the same alive-digit mask as sampling
+
+model:
+  name: meta-llama/Llama-3.2-3B-Instruct
+  max_tokens: 64           # max new tokens for a dialogue turn
+  max_model_len: 4096
+  load_in_4bit: true       # required to fit trainer + vLLM in 12GB
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]
+
+vllm:
+  gpu_memory_utilization: 0.3   # leave headroom for the PyTorch trainer
+  quantization: bitsandbytes    # 3B bf16 (~6.4GB) cannot fit in 30% of 12GB
+  max_num_seqs: 64
+  enforce_eager: true
+  vote_mask_mode: logits_processor  # or "allowed_token_ids" (works on vLLM V1)
+  logprobs_mode: processed_logprobs # logprobs must match the masked sampling distribution
+
+rollout:
+  temperature: 1.0         # keep 1.0 so old_log_probs describe the sampling policy
+  max_concurrent_lobbies: 32
+  seed: 0
+
+paths:
+  adapter_dir: ./adapters
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
