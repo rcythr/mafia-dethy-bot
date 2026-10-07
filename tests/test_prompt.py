@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from dethy_rl.env import DethyEnv  # noqa: E402
+from dethy_rl.env import DethyEnv, clean_message  # noqa: E402
 
 CHAT_DATE = "26 Jul 2024"  # keep in sync with VllmWorker.CHAT_DATE
 
@@ -58,7 +58,18 @@ def check_invariants(env):
     assert "Dethy Mafia" in msgs[0]["content"] and "Dethy Mafia" not in msgs[1]["content"]
 
 
+def check_clean_message():
+    assert clean_message("Player_2: Player_2: This was a coordinated attack.") == "This was a coordinated attack."
+    assert clean_message('"I think Player 1 is lying."') == "I think Player 1 is lying."
+    assert clean_message('Player_4: "Hello there"') == "Hello there"
+    assert clean_message('"cut off without a close') == "cut off without a close"
+    assert clean_message("I trust Player_2: they were clear.") == "I trust Player_2: they were clear."
+    assert clean_message("  spaced \n out  ") == "spaced out"
+    assert clean_message("Player_1:") == ""
+
+
 def main():
+    check_clean_message()
     ap = argparse.ArgumentParser()
     ap.add_argument("--out")
     ap.add_argument("--model")

@@ -1,5 +1,6 @@
 """Dethy Mafia environment: a pure-python state machine (no model/GPU dependencies)."""
 import random
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -57,6 +58,22 @@ class RewardConfig:
     vote_mafia_bonus: float = 0.2       # individual: a Cop who voted for the Mafia
     vote_town_penalty: float = 0.05     # individual: a Cop who voted for a non-Mafia
     investigate_mafia_bonus: float = 0.1  # individual: a Cop who investigated the real Mafia
+
+
+_LABEL = re.compile(r"^\s*(?:Player[_ ]?\d+\s*:\s*)+", re.IGNORECASE)
+
+
+def clean_message(text: str) -> str:
+    """Tidy a model's dialogue before it enters the transcript: drop self-added speaker labels
+    ("Player_2: ...") and wrapping quotation marks. Training still uses the raw tokens."""
+    msg = " ".join(text.split())
+    for _ in range(3):
+        msg = _LABEL.sub("", msg).strip()
+        if len(msg) >= 2 and msg[0] in "\"“'" and msg[-1] in "\"”'":
+            msg = msg[1:-1].strip()
+        elif msg[:1] in "\"“" and msg.count("\"") + msg.count("“") + msg.count("”") == 1:
+            msg = msg[1:].strip()  # opening quote with no close (message was cut off)
+    return msg
 
 
 class DethyEnv:
@@ -198,7 +215,7 @@ class DethyEnv:
 
     def step_dialogue(self, player_id: int, message: str) -> None:
         assert self.phase == "dialogue" and self.speakers and self.speakers[0] == player_id
-        msg = " ".join(message.split()) or "..."
+        msg = clean_message(message) or "..."
         self.transcript.append(f"\nPlayer_{player_id}: {msg}")  # blank line between messages so viewers show separate paragraphs
         self.speakers.pop(0)
         if not self.speakers:
