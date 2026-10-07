@@ -1,3 +1,6 @@
 mlruns/
 adapters/
 __pycache__/
+.hydra/
+*.log
+venv/
