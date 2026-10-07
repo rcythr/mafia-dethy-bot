@@ -150,7 +150,8 @@ async def run_training(cfg) -> None:
 
     mlflow.set_tracking_uri(cfg.experiment.tracking_uri)
     mlflow.set_experiment(cfg.experiment.name)
-    with mlflow.start_run(run_name=cfg.experiment.get("run_name")):
+    with mlflow.start_run(run_name=cfg.experiment.get("run_name"),
+                          log_system_metrics=cfg.experiment.get("system_metrics", True)):
         # Log the fully resolved Hydra config as params and as a reproducible artifact.
         flat = OmegaConf.to_container(cfg, resolve=True)
         mlflow.log_dict(flat, "config.yaml")

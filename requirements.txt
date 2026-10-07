@@ -1,0 +1,2 @@
+psutil          # MLflow system metrics (CPU/RAM)
+nvidia-ml-py    # MLflow system metrics (GPU)

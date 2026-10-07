@@ -2,6 +2,7 @@ experiment:
   name: dethy_mafia_ppo
   tracking_uri: http://storage.local:5000
   run_name: null
+  system_metrics: true     # MLflow logs CPU/RAM/disk/network and GPU utilisation + memory
 
 training:
   epochs: 100
