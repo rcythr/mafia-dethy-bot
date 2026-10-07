@@ -66,6 +66,12 @@ e0 = asyncio.run(collect_trajectories(FakeWorker(), cfg, epoch=0))
 e0b = asyncio.run(collect_trajectories(FakeWorker(), cfg, epoch=0))
 e1 = asyncio.run(collect_trajectories(FakeWorker(), cfg, epoch=1))
 assert roles_of(e0) == roles_of(e0b) and roles_of(e0) != roles_of(e1)
+# spectator game logs: one per game, with the cast, per-stage events and an outro
+assert len(b["game_logs"]) == 16
+for md in b["game_logs"]:
+    assert md.startswith("# Game ") and "## Cast" in md and "## Outro" in md
+    assert "| True role |" in md and "→" in md and ("won." in md)
+    assert md.count("| Player_") >= 5
 print(len(b["steps"]), b["town_win_rate"], b["avg_episode_reward"])
 
 
@@ -162,3 +168,16 @@ assert len(g.alive) == 3
 g, before = vote_result(lambda a, b, c, d: {a: d, b: d, c: b, d: a}, lynch_rule="majority")  # 2 of 4 is not > half
 assert g.alive == before
 print("lynch rules ok")
+
+
+# --- spectator log content
+lg = DethyEnv(seed=21)
+lg.step_night({p: random.choice(lg.allowed_targets(p)) for p in lg.alive})
+while lg.phase == "dialogue":
+    lg.step_dialogue(lg.acting_players()[0], "Player_1: \"hello\"")
+lg.step_vote({p: NO_LYNCH for p in lg.alive})
+md = lg.render_game_log("T")
+assert "hello" in md and 'Player_1: "' not in md.replace("**Player_1", "")  # cleaned text, speaker label by the log
+assert "nobody was eliminated (\"no one\" got the most votes)" in md
+assert "The game did not finish." in md
+print("spectator log ok")

@@ -54,6 +54,10 @@ python tests/test_prompt.py [--out prompts.txt] [--model <hf-name>]    # check a
 
 Everything runs in bf16 (no quantisation). The target is a DGX Spark (128 GB unified memory); `vllm.gpu_memory_utilization` (default 0.3) is the share vLLM reserves and the trainer uses the rest. For a fast smoke test on a smaller GPU, use a smaller model: `model.name=meta-llama/Llama-3.2-1B-Instruct`.
 
+## Spectator game logs
+
+Each epoch, `training.game_logs_per_epoch` (default 4) full games are written to MLflow as Markdown under `games/epoch_NNN/game_KK.md` (`training.game_log_every` sets how often). They are for human review only; agents never see them. Each log has: a cast table (true role incl. sanity, what the agent was told, and fate), every night's investigations (marking results that were misleading) and kill, the dialogue by round, each vote with a ✔ for votes on the Mafia, the tally and result (with the reason if nobody was eliminated), and an outro with the winner, how the game ended, and each player's episode reward.
+
 ## Resuming a run
 
 Every epoch saves a checkpoint (LoRA adapter, value head, optimizer state) to `adapters/<timestamp>/epoch_N/`; the run prints that directory at startup. If a run dies, continue it with:

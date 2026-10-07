@@ -16,7 +16,8 @@ training:
   value_coef: 0.5
   gamma: 0.99
   gae_lambda: 0.95
-  transcript_every: 1      # epochs between sample game transcripts logged to MLflow
+  game_log_every: 1        # epochs between spectator game logs sent to MLflow (games/epoch_N/game_K.md)
+  game_logs_per_epoch: 4   # how many games to log each time
   resume_from: null        # path of an earlier run's adapter dir: reload its newest complete checkpoint and continue
   artifact_every: 10       # epochs between MLflow adapter uploads
   value_warmup_epochs: 2   # epochs that train only the value head (critic warm-up)

@@ -200,9 +200,9 @@ async def run_training(cfg) -> None:
                 "vote_mafia_rate_other_cops", "vote_nolynch_rate", "avg_dialogue_tokens",
                 "avg_think_tokens")}, avg_steps_per_game=batch["avg_game_len"])
             _safe(mlflow.log_metrics, stats, step=epoch)
-            if epoch % cfg.training.get("transcript_every", 1) == 0:  # read these to see what the agents do
-                _safe(mlflow.log_text, "\n\n=====\n\n".join(batch["sample_transcripts"]),
-                      f"transcripts/epoch_{epoch}.txt")
+            if epoch % cfg.training.get("game_log_every", 1) == 0:  # read these to see what the agents do
+                for i, md in enumerate(batch["game_logs"][:cfg.training.get("game_logs_per_epoch", 4)]):
+                    _safe(mlflow.log_text, md, f"games/epoch_{epoch:03d}/game_{i:02d}.md")
             print(f"epoch {epoch}: " + " ".join(f"{k}={v:.4f}" for k, v in stats.items()))
 
             # Weight sync: save LoRA adapter, hand vLLM a new adapter id for the next rollout.

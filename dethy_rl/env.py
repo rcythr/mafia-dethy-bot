@@ -126,6 +126,17 @@ class DethyEnv:
         self.round = 0
         self.speakers: List[int] = []
         self.transcript.append(f"\n=== Night {self.day} ===\n")
+        # omniscient spectator log (never shown to agents): everything incl. true roles, results, votes
+        self._md: List[str] = []
+        self.fate: Dict[int, str] = {}
+        self.end_note = ""
+
+    def _role_name(self, pid: int) -> str:
+        role = self.roles[pid]
+        return "Mafia" if role == "Mafia" else f"{role} Cop"
+
+    def _who(self, pid: int) -> str:
+        return f"Player_{pid} ({self._role_name(pid)})"
 
     @property
     def mafia_id(self) -> int:
@@ -207,6 +218,8 @@ class DethyEnv:
         self.num_rounds = self.rng.randint(self.min_rounds, self.max_rounds)
         self.transcript.append(f"\n=== Day {self.day}: Discussion ({self.num_rounds} round"
                                f"{'s' if self.num_rounds > 1 else ''}) ===\n")
+        self._md.append(f"\n## Day {self.day}: discussion ({self.num_rounds} round"
+                        f"{'s' if self.num_rounds > 1 else ''})")
         self.round = 0
         self.phase = "dialogue"
         self._next_round()
@@ -214,6 +227,7 @@ class DethyEnv:
     def _next_round(self) -> None:
         self.round += 1
         self.transcript.append(("\n" if self.round > 1 else "") + f"-- Round {self.round} of {self.num_rounds} --")
+        self._md.append(f"\n**Round {self.round} of {self.num_rounds}**")
         self.speakers = self.alive[:]
         self.rng.shuffle(self.speakers)  # fresh random speaking order every round
 
@@ -223,6 +237,7 @@ class DethyEnv:
         assert self.phase == "night"
         r: Dict[int, float] = defaultdict(float)
         mafia = self.mafia_id
+        self._md.append(f"\n## Night {self.day}\n")
         for pid in self.alive:
             if pid == mafia:
                 continue
@@ -231,16 +246,24 @@ class DethyEnv:
                 t = self.rng.choice(self.allowed_targets(pid))
             seen = "Mafia" if self._sanity_result(self.roles[pid], t) else "Not Mafia"
             self.private_notes[pid].append(f"Night {self.day}: you investigated Player_{t}: {seen}.")
+            truthful = (seen == "Mafia") == (t == mafia)
+            self._md.append(f"- {self._who(pid)} investigated {self._who(t)} and was told **{seen}**"
+                            + ("" if truthful else " (misleading: that player " + ("is not" if seen == "Mafia" else "is")
+                               + " the Mafia)"))
             if t == mafia:
                 r[pid] += self.rw.investigate_mafia_bonus
 
         victim = targets.get(mafia)
         if victim not in self.alive or victim == mafia:
             victim = self.rng.choice([p for p in self.alive if p != mafia])
+        self._md.append(f"- {self._who(mafia)} killed {self._who(victim)}")
+        self.fate[victim] = f"killed on night {self.day}"
         self.alive.remove(victim)
         self.transcript.append(f"Player_{victim} was killed in the night by the Mafia and is out of the game.")
         if len(self.alive) <= 2:
             self.transcript.append("\nOnly 2 players are left. The Mafia wins!")
+            self.end_note = (f"On night {self.day} the Mafia's kill left only 2 players alive, so the Mafia "
+                             "reached parity.")
             self.done, self.winner = True, "Mafia"
             self._team(r, -self.rw.parity, self.rw.parity)
             return dict(r), True
@@ -252,6 +275,7 @@ class DethyEnv:
         assert self.phase == "dialogue" and self.speakers and self.speakers[0] == player_id
         msg = clean_message(message) or "..."
         self.transcript.append(f"\nPlayer_{player_id}: {msg}")  # blank line between messages so viewers show separate paragraphs
+        self._md.append(f"\n- **{self._who(player_id)}**: {msg}")
         self.speakers.pop(0)
         if not self.speakers:
             if self.round < self.num_rounds:
@@ -275,6 +299,14 @@ class DethyEnv:
         counts = Counter(valid.values())
         mafia = self.mafia_id
         r: Dict[int, float] = defaultdict(float)
+        self._md.append(f"\n### Day {self.day}: vote\n")
+        for p, v in sorted(valid.items()):
+            target = "no one" if v == NO_LYNCH else self._who(v)
+            hit = " ✔ (voted for the Mafia)" if (p != mafia and v == mafia) else ""
+            self._md.append(f"- {self._who(p)} → {target}{hit}")
+        tally = ", ".join(("no one" if v == NO_LYNCH else f"Player_{v}") + f": {c}"
+                          for v, c in sorted(counts.items(), key=lambda kv: -kv[1]))
+        self._md.append(f"\nTally: {tally}")
 
         # dense shaping: how much heat the Mafia took, and which Cops voted well
         heat = self.rw.heat * counts.get(mafia, 0) / len(valid)
@@ -290,16 +322,29 @@ class DethyEnv:
         victim = leaders[0] if len(leaders) == 1 else NO_LYNCH   # a tie for first elects no one
         if self.lynch_rule == "majority" and victim != NO_LYNCH and top < len(self.alive) // 2 + 1:
             victim = NO_LYNCH                                    # strict mode: need > half of the living
+        if victim == NO_LYNCH:
+            if len(leaders) > 1:
+                why = "two or more tied for the most votes"
+            elif leaders[0] == NO_LYNCH:
+                why = "\"no one\" got the most votes"
+            else:
+                why = "no player had more than half of the votes"
+            self._md.append(f"\n**Result:** nobody was eliminated ({why}).")
+        else:
+            self._md.append(f"\n**Result:** {self._who(victim)} was eliminated.")
         if victim == NO_LYNCH:  # nobody is eliminated; the game goes straight to the next night
             self.transcript.append("\nNo one was eliminated (no player got enough votes).")
             self.day += 1
             self.phase = "night"
             self.transcript.append(f"\n=== Night {self.day} ===\n")
             return dict(r), False
+        self.fate[victim] = f"eliminated on day {self.day}"
         self.alive.remove(victim)
 
         if self.roles[victim] == "Mafia":
             self.transcript.append(f"\nPlayer_{victim} was eliminated and was the Mafia. The Cops win!")
+            self.end_note = (f"On day {self.day} the Cops eliminated the Mafia ({self._who(victim)}) with "
+                             f"{counts[victim]} of {len(valid)} votes.")
             self.done, self.winner = True, "Town"
             self._team(r, self.rw.lynch_mafia, -self.rw.lynch_mafia)
             return dict(r), True
@@ -307,6 +352,8 @@ class DethyEnv:
         self.transcript.append(f"\nPlayer_{victim} was eliminated and was not the Mafia.")
         if len(self.alive) <= 2:
             self.transcript.append("\nOnly 2 players are left. The Mafia wins!")
+            self.end_note = (f"On day {self.day} the table eliminated an innocent Cop ({self._who(victim)}), "
+                             "leaving only 2 players alive, so the Mafia reached parity.")
             self.done, self.winner = True, "Mafia"
             self._team(r, -self.rw.parity, self.rw.parity)
             return dict(r), True
@@ -316,3 +363,29 @@ class DethyEnv:
         self.phase = "night"
         self.transcript.append(f"\n=== Night {self.day} ===\n")
         return dict(r), False
+
+    # ------------------------------------------------------------ spectator log
+    def render_game_log(self, title: str, returns: Optional[Dict[int, float]] = None) -> str:
+        """Markdown for human inspection: true roles, private results, dialogue, votes, and an outro."""
+        mafia = self.mafia_id
+        out = [f"# {title}", "", "## Cast", "", "| Player | True role | Told to the agent | Fate |", "|---|---|---|---|"]
+        for pid in sorted(self.roles):
+            role = self.roles[pid]
+            fate = self.fate.get(pid, "survived" if pid in self.alive else "-")
+            out.append(f"| Player_{pid} | {self._role_name(pid)} | {self.private_role(pid)} | {fate} |")
+        out += self._md
+        out += ["", "---", "", "## Outro", ""]
+        if not self.done:
+            out.append("The game did not finish.")
+        else:
+            out.append(f"**{'The Cops (Town)' if self.winner == 'Town' else 'The Mafia'} won.** {self.end_note}")
+            out.append("")
+            out.append("- Players alive at the end: " + (", ".join(f"Player_{p}" for p in self.alive) or "none"))
+            out.append(f"- The Mafia was {self._who(mafia)}.")
+            ended = "during the night" if self.end_note.startswith("On night") else "during the day"
+            out.append(f"- Game length: {self.day} night{'s' if self.day > 1 else ''}, ended {ended}.")
+        if returns:
+            out += ["", "| Player | Role | Episode reward |", "|---|---|---|"]
+            for pid in sorted(returns):
+                out.append(f"| Player_{pid} | {self._role_name(pid)} | {returns[pid]:+.2f} |")
+        return "\n".join(out) + "\n"
