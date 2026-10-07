@@ -208,7 +208,7 @@ async def run_training(cfg) -> None:
             path = os.path.join(adapter_dir, f"epoch_{epoch}")
             save_checkpoint(agent, optimizer, path, epoch, run.info.run_id)
             worker.set_lora(path, lora_id=epoch + 1)
-            if (epoch + 1) % cfg.training.get("artifact_every", 10) == 0:
+            if (epoch + 1) % cfg.training.get("artifact_every", 10) == 0 or epoch == cfg.training.epochs - 1:
                 _safe(mlflow.log_artifacts, path, artifact_path=f"adapters/epoch_{epoch}")
             del steps, batch
             gc.collect()
