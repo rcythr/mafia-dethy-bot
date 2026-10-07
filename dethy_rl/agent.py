@@ -64,6 +64,14 @@ class DethyAgent(nn.Module):
         out = self.policy_net(input_ids=input_ids, output_hidden_states=True, logits_to_keep=1)
         return self.value_head(out.hidden_states[-1][:, value_pos].float()).squeeze(-1)
 
+    def value_for_training(self, input_ids: torch.Tensor, value_pos: int) -> torch.Tensor:
+        """Value prediction whose gradient reaches only the value head (critic warm-up): the
+        backbone and LoRA run without grad, so the policy is not touched."""
+        with torch.no_grad():
+            out = self.policy_net(input_ids=input_ids, output_hidden_states=True, logits_to_keep=1)
+            hidden = out.hidden_states[-1][:, value_pos].float()
+        return self.value_head(hidden).squeeze(-1)
+
     def save_adapter(self, path: str) -> None:
         """LoRA adapter (loaded by vLLM) plus the value head (needed to resume training)."""
         self.policy_net.save_pretrained(path)

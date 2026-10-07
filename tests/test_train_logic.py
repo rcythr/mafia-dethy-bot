@@ -46,6 +46,11 @@ class FakeAgent(nn.Module):
         ref = self.ref(h).detach()[:, -num_action_tokens - 1:-1] if compute_ref else None
         return logits, ref, self.value_head(h[:, value_pos]).squeeze(-1)
 
+    def value_for_training(self, ids, value_pos):
+        with torch.no_grad():
+            h = self.emb(ids)[:, value_pos]
+        return self.value_head(h).squeeze(-1)
+
     def values(self, ids, value_pos):
         with torch.no_grad():
             return self.value_head(self.emb(ids)[:, value_pos]).squeeze(-1)
@@ -68,8 +73,13 @@ assert "explained_variance" in stats
 mafia = [s["advantage"] for s in steps if s["role"] == "Mafia"]
 assert abs(sum(mafia) / len(mafia)) < 1e-5  # per-team normalised
 opt = torch.optim.AdamW(agent.trainable_parameters(), lr=1e-2)
+snap = {n: p.detach().clone() for n, p in agent.named_parameters()}
 before = ppo_update(agent, opt, steps, cfg, train_policy=False)
 assert "kl" not in before  # warm-up: value only
+# warm-up must change the value head and nothing else
+assert not torch.equal(snap["value_head.weight"], agent.value_head.weight)
+for n in ("emb.weight", "lm.weight", "lm.bias"):
+    assert torch.equal(snap[n], dict(agent.named_parameters())[n]), n
 after = ppo_update(agent, opt, steps, cfg)
 assert all(k in after for k in ("policy_loss", "kl", "entropy", "clip_frac", "approx_kl_old"))
 print("train logic ok", {k: round(v, 3) for k, v in after.items()})

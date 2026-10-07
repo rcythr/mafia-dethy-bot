@@ -1,6 +1,7 @@
 """PPO + GAE training loop with LoRA weight sync to the vLLM engine."""
 import asyncio
 import gc
+import logging
 import math
 import os
 import random
@@ -79,20 +80,21 @@ def annotate_advantages(agent, steps: List[Dict], cfg) -> Dict[str, float]:
 def ppo_step_loss(agent, step: Dict, cfg, train_policy: bool = True):
     device = agent.value_head.weight.device
     K, P = len(step["action_ids"]), len(step["prompt_ids"])
-    curr, ref, value = agent(_ids(step, device), num_action_tokens=K, value_pos=P - 1,
-                             compute_ref=train_policy)
+    if not train_policy:  # critic warm-up: only the value head learns, LoRA stays untouched
+        value = agent.value_for_training(_ids(step, device), P - 1)
+        value_loss = F.mse_loss(value.float().squeeze(), torch.tensor(step["return"], device=device))
+        return value_loss, dict(value_loss=value_loss.item(), total_loss=value_loss.item())
+    curr, ref, value = agent(_ids(step, device), num_action_tokens=K, value_pos=P - 1)
     curr = curr[0].float()  # (K, V)
-    ref = ref[0].float() if ref is not None else None
+    ref = ref[0].float()
     if step["allowed_token_ids"] is not None and cfg.training.masked_vote_logprobs:
         keep = torch.zeros(curr.shape[-1], dtype=torch.bool, device=device)
         keep[step["allowed_token_ids"]] = True
         curr = curr.masked_fill(~keep, -1e9)
-        ref = ref.masked_fill(~keep, -1e9) if ref is not None else None
+        ref = ref.masked_fill(~keep, -1e9)
 
     logp_all = F.log_softmax(curr, dim=-1)
     value_loss = F.mse_loss(value.float().squeeze(), torch.tensor(step["return"], device=device))
-    if not train_policy:  # critic warm-up: only fit the value head
-        return value_loss, dict(value_loss=value_loss.item(), total_loss=value_loss.item())
     ref_logp_all = F.log_softmax(ref, dim=-1)
     actions = torch.tensor(step["action_ids"], device=device)
     logp = logp_all.gather(-1, actions[:, None]).squeeze(-1)
@@ -148,6 +150,8 @@ async def run_training(cfg) -> None:
     print(f"startup: vLLM engine {t1 - t0:.0f}s, PyTorch trainer {time.time() - t1:.0f}s")
     optimizer = torch.optim.AdamW(agent.trainable_parameters(), lr=cfg.training.learning_rate)
 
+    # GB10 (unified memory) reports GPU memory/power as 'Not Supported'; utilisation still works
+    logging.getLogger("mlflow.system_metrics.metrics.gpu_monitor").setLevel(logging.ERROR)
     mlflow.set_tracking_uri(cfg.experiment.tracking_uri)
     mlflow.set_experiment(cfg.experiment.name)
     with mlflow.start_run(run_name=cfg.experiment.get("run_name"),
