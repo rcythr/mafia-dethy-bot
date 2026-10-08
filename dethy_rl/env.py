@@ -55,7 +55,7 @@ Answers: Night and Vote: only a single digit, the ID of a living player other th
 """
 
 
-def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "plurality", style: str = "full") -> str:
+def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "majority", style: str = "full") -> str:
     """The rules text, with or without the no-lynch option. style: "full" or "compact" (about half the tokens)."""
     assert style in ("full", "compact"), style
     rule = (f" (or for {NO_LYNCH}, meaning no one: if that gets the most votes, nobody is eliminated "
@@ -113,7 +113,7 @@ def clean_message(text: str) -> str:
 class DethyEnv:
     def __init__(self, seed: Optional[int] = None, rewards: Optional[dict] = None,
                  min_rounds: int = 1, max_rounds: int = 3, allow_no_lynch: bool = True,
-                 lynch_rule: str = "plurality", rules_style: str = "full", first_kill_night: int = 2):
+                 lynch_rule: str = "majority", rules_style: str = "full", first_kill_night: int = 2):
         self.rng = random.Random(seed)
         self.rw = RewardConfig(**(rewards or {}))
         self.min_rounds, self.max_rounds = min_rounds, max_rounds

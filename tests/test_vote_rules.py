@@ -37,4 +37,9 @@ for rule, needed in (("plurality", 2), ("majority", 3)):
         if eliminated:
             eliminated_by_top[top] += 1
     print(rule, "ok; eliminations by vote count of the winner:", dict(eliminated_by_top))
+
+# the default rule is majority: 2 of 4 does not pass, 3 of 4 does
+from dethy_rl.env import build_rules  # noqa: E402
+assert DethyEnv(seed=1).lynch_rule == "majority"
+assert "MORE THAN HALF" in build_rules()
 print("vote rules ok")

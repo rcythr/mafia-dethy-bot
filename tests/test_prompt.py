@@ -100,7 +100,7 @@ def check_rules_styles():
     for text in (full, compact):
         for must in ("Sane", "Insane", "Naive", "Paranoid", "Paranoid", "9", "tie", "single digit"):
             assert must in text, must
-    e = DethyEnv(seed=3, rules_style="compact")
+    e = DethyEnv(seed=3, rules_style="compact", lynch_rule="plurality")
     assert e.build_messages(0)[0]["content"] == compact.strip()
     check_invariants(e)
 

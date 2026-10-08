@@ -147,6 +147,7 @@ print("no-lynch ok", dict(sorted(lengths.items())), outcomes)
 # --- plurality rule: most votes wins; a tie for first eliminates no one; majority mode is stricter
 def day_one(seed, **kw):
     # first_kill_night=1 keeps the old shape (4 alive on day 1) so these unit tests can use 4 voters
+    kw.setdefault("lynch_rule", "plurality")   # these checks are about plurality unless a test says otherwise
     g = DethyEnv(seed=seed, first_kill_night=1, **kw)
     g.step_night({p: random.choice(g.allowed_targets(p)) for p in g.alive})
     while g.phase == "dialogue":

@@ -19,9 +19,9 @@ A game alternates:
 
 1. **Night.** Every Cop investigates one player (privately learns "Mafia"/"Not Mafia" per their sanity). **Nobody is killed on the first night** (the Mafia sleeps and is not prompted). From the second night on, the Mafia also kills one other player at the same time (`env.first_kill_night: 2`).
 2. **Day dialogue.** A random **1-3 rounds**. Each round has a freshly shuffled speaking order, and players speak one at a time, so later speakers see earlier messages.
-3. **Day vote.** Everyone votes for another living player, or for `9` = "no one". The player with the **most votes** is eliminated; if two or more tie for the most, or "no one" leads, nobody is eliminated and the next night begins (`env.lynch_rule: plurality`). An eliminated player's *non-Mafia-ness* is announced (their sanity stays hidden). `env.allow_no_lynch=false` removes the `9` option; `env.lynch_rule=majority` is a stricter variant that needs more than half of the living players.
+3. **Day vote.** Everyone votes for another living player, or for `9` = "no one". A player is eliminated only with **more than half of the living players' votes** (3 of 4, 2 of 3, 3 of 5; `env.lynch_rule: majority`); if the votes are split, tied, or most players abstain, nobody is eliminated and the next night begins. An eliminated player's *non-Mafia-ness* is announced (their sanity stays hidden). `env.allow_no_lynch=false` removes the `9` option; `env.lynch_rule=plurality` is a looser variant where the unique leader wins and a tie for first elects no one.
 
-Town wins when the Mafia is eliminated. The Mafia wins when 2 or fewer players remain (parity). From night 2 the Mafia kills every night, so abstaining or tying only delays things. With random play a game has 2 votes about 64% of the time and 3 about 26%, and Town wins about 23%.
+Town wins when the Mafia is eliminated. The Mafia wins when 2 or fewer players remain (parity). From night 2 the Mafia kills every night, so abstaining or splitting the vote only delays things. With random voting about 81% of games reach a third vote and Town wins about 15%, so Town has to coordinate on one suspect.
 
 ## Layout
 
