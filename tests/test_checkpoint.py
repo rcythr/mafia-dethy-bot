@@ -84,4 +84,23 @@ with tempfile.TemporaryDirectory() as d:
     torch.manual_seed(1); train_a_bit(b, opt_b, 1)
     pa, pb = params(a), params(b)
     assert all(torch.allclose(pa[k], pb[k], atol=1e-6) for k in pa)
+
+    # a checkpoint saved with a single optimizer group still loads (weights kept, fresh Adam state)
+    single = torch.optim.AdamW(a.trainable_parameters(), lr=1e-2)
+    train_a_bit(a, single)
+    save_checkpoint(a, single, os.path.join(d, "epoch_5"), 5, None)
+    c = TinyAgent()
+    two_groups = torch.optim.AdamW([{"params": [p for p in c.policy_net.parameters() if p.requires_grad], "lr_mult": 1.0},
+                                    {"params": list(c.value_head.parameters()), "lr_mult": 10.0}], lr=1e-2)
+    load_checkpoint(c, two_groups, os.path.join(d, "epoch_5"))
+    assert [g["lr_mult"] for g in two_groups.param_groups] == [1.0, 10.0]
+    # same layout: the current config's lr_mult wins over the saved one
+    old = torch.optim.AdamW([{"params": [p for p in a.policy_net.parameters() if p.requires_grad], "lr_mult": 1.0},
+                             {"params": list(a.value_head.parameters()), "lr_mult": 1.0}], lr=1e-2)
+    train_a_bit(a, old)
+    save_checkpoint(a, old, os.path.join(d, "epoch_6"), 6, None)
+    new = torch.optim.AdamW([{"params": [p for p in c.policy_net.parameters() if p.requires_grad], "lr_mult": 1.0},
+                             {"params": list(c.value_head.parameters()), "lr_mult": 10.0}], lr=1e-2)
+    load_checkpoint(c, new, os.path.join(d, "epoch_6"))
+    assert [g["lr_mult"] for g in new.param_groups] == [1.0, 10.0]
 print("checkpoint resume ok")

@@ -51,4 +51,12 @@ def load_checkpoint(agent, optimizer, path: str) -> None:
     set_peft_model_state_dict(agent.policy_net, adapter_sd)
     device = agent.value_head.weight.device
     agent.value_head.load_state_dict(torch.load(os.path.join(path, "value_head.pt"), map_location=device))
-    optimizer.load_state_dict(torch.load(os.path.join(path, "optimizer.pt"), map_location="cpu"))
+    opt_state = torch.load(os.path.join(path, "optimizer.pt"), map_location="cpu")
+    if len(opt_state["param_groups"]) != len(optimizer.param_groups):
+        # e.g. a checkpoint from before the critic had its own parameter group: keep weights, restart Adam
+        print("warning: optimizer layout changed since this checkpoint; starting with a fresh optimizer state")
+        return
+    current_mult = [g.get("lr_mult", 1.0) for g in optimizer.param_groups]
+    optimizer.load_state_dict(opt_state)
+    for g, m in zip(optimizer.param_groups, current_mult):  # the CURRENT config's multipliers win
+        g["lr_mult"] = m

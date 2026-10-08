@@ -92,6 +92,19 @@ def check_template_kwargs():
     assert all(kw["enable_thinking"] is False and "date_string" in kw and kw["add_generation_prompt"] for kw in seen)
 
 
+def check_rules_styles():
+    from dethy_rl.env import build_rules
+
+    full, compact = build_rules(True, "plurality", "full"), build_rules(True, "plurality", "compact")
+    assert len(compact) < 0.5 * len(full)
+    for text in (full, compact):
+        for must in ("Sane", "Insane", "Naive", "Paranoid", "Paranoid", "9", "tie", "single digit"):
+            assert must in text, must
+    e = DethyEnv(seed=3, rules_style="compact")
+    assert e.build_messages(0)[0]["content"] == compact.strip()
+    check_invariants(e)
+
+
 def check_clean_message():
     assert clean_message("Player_2: Player_2: This was a coordinated attack.") == "This was a coordinated attack."
     assert clean_message('"I think Player 1 is lying."') == "I think Player 1 is lying."
@@ -105,6 +118,7 @@ def check_clean_message():
 def main():
     check_clean_message()
     check_template_kwargs()
+    check_rules_styles()
     ap = argparse.ArgumentParser()
     ap.add_argument("--out")
     ap.add_argument("--model")

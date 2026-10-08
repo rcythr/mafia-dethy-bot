@@ -58,6 +58,31 @@ Everything runs in bf16 (no quantisation). The target is a DGX Spark (128 GB uni
 
 Each epoch, `training.game_logs_per_epoch` (default 4) full games are written to MLflow as Markdown under `games/epoch_NNN/game_KK.md` (`training.game_log_every` sets how often). They are for human review only; agents never see them. Each log has: a cast table (true role incl. sanity, what the agent was told, and fate), every night's investigations (marking results that were misleading) and kill, the dialogue by round, each vote with a ✔ for votes on the Mafia, the tally and result (with the reason if nobody was eliminated), and an outro with the winner, how the game ended, and each player's episode reward.
 
+## Evaluating a checkpoint
+
+Per-epoch MLflow metrics are noisy (32 games each), so use `evaluate.py` for a clean comparison. It plays fixed-seed games for four matchups on the same role assignments and prints win rates with 95% intervals and a p-value against the base-vs-base baseline:
+
+```bash
+python evaluate.py eval.adapter=adapters/<run>/epoch_19 eval.games=200   # use the same model/env overrides as training
+```
+
+| Matchup | Question it answers |
+|---|---|
+| `base_vs_base` | the baseline / noise floor |
+| `trained_cops_vs_base_mafia` | did the Cops improve? |
+| `base_cops_vs_trained_mafia` | did the Mafia improve? |
+| `trained_vs_trained` | what self-play training sees |
+
+Only the vLLM engine is loaded (no trainer), so it is quick: roughly 5 to 10 minutes per 200-game matchup. Results are saved to `eval_results.json` (`eval.out`).
+
+## Speed and critic options
+
+Measured on the DGX Spark (32 games/epoch, ~700 steps): rollout ~40 s, value pass ~260 s, policy update ~1,500 s. The trainer dominates, so:
+
+- `model.gradient_checkpointing=false` removes ~25% of update compute (more activation memory; test before an unattended run).
+- `env.rules_style=compact` shrinks the rules prompt to ~40% of its size (about 600 fewer tokens per step, so roughly 25% cheaper steps). It also removes the worked example and most strategy hints, so evaluate it with `evaluate.py` before trusting it.
+- `training.value_lr_mult=10` gives the critic head its own 10x learning rate (the base run's `explained_variance` stayed at 0.1 to 0.4).
+
 ## Resuming a run
 
 Every epoch saves a checkpoint (LoRA adapter, value head, optimizer state) to `adapters/<timestamp>/epoch_N/`; the run prints that directory at startup. If a run dies, continue it with:

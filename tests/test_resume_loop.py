@@ -45,6 +45,12 @@ class FakeAgent(nn.Module):
     def trainable_parameters(self):
         return [p for p in self.parameters() if p.requires_grad]
 
+    def policy_parameters(self):
+        return [p for p in self.policy_net.parameters() if p.requires_grad]
+
+    def value_parameters(self):
+        return list(self.value_head.parameters())
+
     def forward(self, ids, num_action_tokens=0, value_pos=-1, compute_ref=True):
         out = self.policy_net(input_ids=ids, output_hidden_states=True)
         logits = out.logits[:, -num_action_tokens - 1:-1]

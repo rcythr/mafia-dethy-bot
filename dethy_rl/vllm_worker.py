@@ -31,6 +31,7 @@ class AgentRequest:
     phase: str                      # "night" | "dialogue" | "vote" | "think"
     allowed_players: List[int] = field(default_factory=list)
     trace: bool = False             # record this call as an MLflow LLM span
+    adapter: bool = True            # False: answer with the base model even when a LoRA is loaded (evaluation)
 
 
 @dataclass
@@ -153,7 +154,7 @@ class VllmWorker:
             {"prompt_token_ids": req.prompt_ids},
             params,
             request_id=uuid.uuid4().hex,
-            lora_request=self.lora_request,
+            lora_request=self.lora_request if req.adapter else None,
         ):
             final = out
         comp = final.outputs[0]

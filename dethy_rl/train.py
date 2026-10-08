@@ -158,7 +158,12 @@ async def run_training(cfg) -> None:
     t1 = time.time()
     agent = DethyAgent(cfg)
     print(f"startup: vLLM engine {t1 - t0:.0f}s, PyTorch trainer {time.time() - t1:.0f}s")
-    optimizer = torch.optim.AdamW(agent.trainable_parameters(), lr=cfg.training.learning_rate)
+    # Two parameter groups so the critic head can learn faster than the LoRA weights (the LR schedule
+    # scales both through lr_mult).
+    optimizer = torch.optim.AdamW([
+        {"params": agent.policy_parameters(), "lr_mult": 1.0},
+        {"params": agent.value_parameters(), "lr_mult": cfg.training.get("value_lr_mult", 1.0)},
+    ], lr=cfg.training.learning_rate)
 
     # Each run writes to its own adapter dir; resume by pointing training.resume_from at it.
     adapter_dir = cfg.training.resume_from or cfg.paths.adapter_dir
@@ -188,7 +193,7 @@ async def run_training(cfg) -> None:
         for epoch in range(start_epoch, cfg.training.epochs):
             lr = lr_at(epoch, cfg)
             for group in optimizer.param_groups:
-                group["lr"] = lr
+                group["lr"] = lr * group.get("lr_mult", 1.0)
             trace = cfg.tracing.enabled and epoch % cfg.tracing.every_n_epochs == 0
             t_a = time.time()
             batch = await collect_trajectories(worker, cfg, trace=trace, epoch=epoch)

@@ -47,13 +47,24 @@ HOW TO ANSWER
 """
 
 
-def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "plurality") -> str:
-    """The rules text, with or without the no-lynch option."""
+_COMPACT_TEMPLATE = """Dethy Mafia, a social deduction game with 5 players (Player_0 to Player_4): 1 Mafia and 4 Cops. The Cops win by eliminating the Mafia; the Mafia wins when only 2 players are alive.
+The four Cops have four different hidden types, and no Cop knows their own: Sane (investigations are true), Insane (reversed), Naive (always "Not Mafia"), Paranoid (always "Mafia"). Only the Mafia knows exactly who they are. Your Private Role says "Mafia" or "Cop". Anyone may lie about their role or results. Everything before the line starting "You are Player_" is public.
+Each night every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their type), and the Mafia kills one other player. Each day there are 1 to 3 discussion rounds (everyone speaks once per round, random order), then everyone votes for another living player{NOLYNCH_RULE}. {ELIM_RULE}
+Cops: your results are clues, not facts. Compare notes: the Cops' types differ, so their reports can contradict each other. Vote for who you think is the Mafia. Mafia: blend in, deflect suspicion, kill whoever might expose you. Nobody can investigate, kill or vote for themselves.
+Answers: Night and Vote: only a single digit, the ID of a living player other than yourself.{NOLYNCH_ANSWER} Discussion: one or two short sentences (about 40 words), without a "Player_N:" prefix; nobody investigates or kills during the day.
+"""
+
+
+def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "plurality", style: str = "full") -> str:
+    """The rules text, with or without the no-lynch option. style: "full" or "compact" (about half the tokens)."""
+    assert style in ("full", "compact"), style
     rule = (f" (or for {NO_LYNCH}, meaning no one: if that gets the most votes, nobody is eliminated "
             "and the next night begins)") if allow_no_lynch else ""
     answer = (f" In the Vote phase you may instead answer {NO_LYNCH} to vote for no one. Voting for no one is safe "
               "if you are unsure, but the Mafia keeps killing every night, so skipping too long lets it win."
               ) if allow_no_lynch else ""
+    if style == "compact" and allow_no_lynch:
+        answer = f" In the Vote phase you may answer {NO_LYNCH} to vote for no one (safe, but the Mafia keeps killing)."
     if lynch_rule == "majority":
         elim = ("A player is eliminated only if MORE THAN HALF of the living players vote for them. "
                 "If nobody gets that many votes (the votes are split, or most players vote for no one), "
@@ -62,7 +73,8 @@ def build_rules(allow_no_lynch: bool = True, lynch_rule: str = "plurality") -> s
         elim = ("The player with the most votes is eliminated. If two or more players tie for the most votes"
                 + (", or \"no one\" gets the most," if allow_no_lynch else ",")
                 + " nobody is eliminated and the next night begins.")
-    return (_RULES_TEMPLATE.replace("{NOLYNCH_RULE}", rule).replace("{NOLYNCH_ANSWER}", answer)
+    template = _COMPACT_TEMPLATE if style == "compact" else _RULES_TEMPLATE
+    return (template.replace("{NOLYNCH_RULE}", rule).replace("{NOLYNCH_ANSWER}", answer)
             .replace("{ELIM_RULE}", elim))
 
 
@@ -101,13 +113,14 @@ def clean_message(text: str) -> str:
 class DethyEnv:
     def __init__(self, seed: Optional[int] = None, rewards: Optional[dict] = None,
                  min_rounds: int = 1, max_rounds: int = 3, allow_no_lynch: bool = True,
-                 lynch_rule: str = "plurality"):
+                 lynch_rule: str = "plurality", rules_style: str = "full"):
         self.rng = random.Random(seed)
         self.rw = RewardConfig(**(rewards or {}))
         self.min_rounds, self.max_rounds = min_rounds, max_rounds
         self.allow_no_lynch = allow_no_lynch
         assert lynch_rule in ("majority", "plurality"), lynch_rule
         self.lynch_rule = lynch_rule
+        self.rules_style = rules_style
         self.reset()
 
     # ------------------------------------------------------------------ state
@@ -167,12 +180,12 @@ class DethyEnv:
 
     def build_messages(self, player_id: int, think: bool = False) -> List[Dict[str, str]]:
         """Chat form: the rules are the system message, the rest is one user message."""
-        return [{"role": "system", "content": build_rules(self.allow_no_lynch, self.lynch_rule).strip()},
+        return [{"role": "system", "content": build_rules(self.allow_no_lynch, self.lynch_rule, self.rules_style).strip()},
                 {"role": "user", "content": self.user_text(player_id, think)}]
 
     def build_prompt(self, player_id: int, think: bool = False) -> str:
         """Raw-text form (no chat template): rules followed by the user text."""
-        return f"{build_rules(self.allow_no_lynch, self.lynch_rule)}\n{self.user_text(player_id, think)}"
+        return f"{build_rules(self.allow_no_lynch, self.lynch_rule, self.rules_style)}\n{self.user_text(player_id, think)}"
 
     def user_text(self, player_id: int, think: bool = False) -> str:
         """[Shared Public Transcript] + \\nPrivate Role: [Role]. Phase: [Phase]. Action:

@@ -26,6 +26,7 @@ training:
   ppo_epochs: 1            # passes over each rollout batch
   grad_accum_steps: 8      # trajectory steps per optimizer step (batch size is 1 sequence)
   max_grad_norm: 1.0
+  value_lr_mult: 1.0       # critic head LR = learning_rate x this (the schedule applies to both); try 10 if explained_variance stays low
   masked_vote_logprobs: true  # train-time vote log-probs use the same alive-digit mask as sampling
 
 env:
@@ -33,6 +34,7 @@ env:
   max_dialogue_rounds: 3
   allow_no_lynch: true       # players may vote 9 = "no one"; if it wins the vote nobody is eliminated
   lynch_rule: plurality      # plurality: most votes wins, a tie for first elects no one; majority: need more than half of the living players
+  rules_style: full          # full | compact (about half the tokens: faster training steps, less hand-holding)
   think_tokens: 0            # >0: private reasoning (max tokens) before each night action and vote
   rewards:                      # see RewardConfig in dethy_rl/env.py
     lynch_mafia: 1.0
@@ -75,6 +77,13 @@ tracing:                        # MLflow traces: one per game, one span per LLM 
   enabled: true
   lobbies_per_epoch: 2          # only trace this many games per traced epoch (keeps overhead low)
   every_n_epochs: 1
+
+eval:                           # used by evaluate.py
+  adapter: null                 # path of an epoch_N checkpoint dir, e.g. adapters/20261007-082559/epoch_19
+  games: 200                    # games per matchup
+  seed_epoch: 1000              # seeds the role assignments; far from the training epochs so games are unseen
+  matchups: [base_vs_base, trained_cops_vs_base_mafia, base_cops_vs_trained_mafia, trained_vs_trained]
+  out: eval_results.json
 
 paths:
   adapter_dir: ./adapters/${now:%Y%m%d-%H%M%S}   # one directory per run

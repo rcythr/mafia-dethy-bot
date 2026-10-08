@@ -36,6 +36,13 @@ class DethyAgent(nn.Module):
     def trainable_parameters(self):
         return [p for p in self.parameters() if p.requires_grad]
 
+    def policy_parameters(self):
+        """LoRA weights."""
+        return [p for p in self.policy_net.parameters() if p.requires_grad]
+
+    def value_parameters(self):
+        return list(self.value_head.parameters())
+
     def forward(
         self, input_ids: torch.Tensor, num_action_tokens: int = 0, value_pos: int = -1,
         compute_ref: bool = True,
