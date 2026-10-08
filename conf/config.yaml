@@ -80,10 +80,16 @@ tracing:                        # MLflow traces: one per game, one span per LLM 
   every_n_epochs: 1
 
 eval:                           # used by evaluate.py
+  mode: matchups                # matchups | scenarios | both  (scenarios: one model seat + four scripted players)
   adapter: null                 # path of an epoch_N checkpoint dir, e.g. adapters/20261007-082559/epoch_19
   games: 200                    # games per matchup
   seed_epoch: 1000              # seeds the role assignments; far from the training epochs so games are unseen
   matchups: [base_vs_base, trained_cops_vs_base_mafia, base_cops_vs_trained_mafia, trained_vs_trained]
+  scenario_games: 100           # games per scenario (each is cheap: only one seat calls the model)
+  scenario_roles: [Sane, Insane, Naive, Paranoid, Mafia]
+  scenario_variants: [base, trained]
+  cop_share_prob: 1.0           # scripted Cops: fraction that report their notes honestly (Cop scenarios)
+  mafia_scenario_share_prob: 0.5  # ...and in the Mafia scenario (fully honest Cops would leave it no chance)
   out: eval_results.json
 
 paths:

@@ -116,14 +116,20 @@ def own_claims(env, pid: int) -> List[Claim]:
     return [Claim(pid, t, r) for (_n, i, t, r) in env.investigations if i == pid]
 
 
-def posterior_pick(env, pid: int, use_claims: bool, rng: random.Random) -> Tuple[int, Counter]:
-    """The living player (not pid) an exact reasoner would vote for, and the posterior behind it."""
+def posterior_leaders(env, pid: int, use_claims: bool) -> Tuple[List[int], Counter]:
+    """All living players (not pid) tied for most likely Mafia under the exact posterior, and the posterior."""
     claims = own_claims(env, pid) + (public_claims(env, exclude=pid) if use_claims else [])
     dead = [p for p in env.roles if p not in env.alive]
     post = mafia_posterior(claims, dead, pid)
     cands = [p for p in env.alive if p != pid]
     best = max(post.get(p, 0) for p in cands)
-    return rng.choice([p for p in cands if post.get(p, 0) == best]), post
+    return [p for p in cands if post.get(p, 0) == best], post
+
+
+def posterior_pick(env, pid: int, use_claims: bool, rng: random.Random) -> Tuple[int, Counter]:
+    """The living player (not pid) an exact reasoner would vote for (ties broken at random), and the posterior."""
+    leaders, post = posterior_leaders(env, pid, use_claims)
+    return rng.choice(leaders), post
 
 
 # --------------------------------------------------------------------------- scripted players

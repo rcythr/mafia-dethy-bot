@@ -48,6 +48,7 @@ python main.py                                   # train with defaults
 python main.py training.epochs=10 env.think_tokens=128   # Hydra overrides
 mlflow ui --backend-store-uri ./mlruns           # view runs
 python tests/test_rollout_env.py && python tests/test_train_logic.py   # no GPU needed
+python tests/test_expert.py && python tests/test_scenarios.py && python tests/test_vote_rules.py
 python tests/test_checkpoint.py && python tests/test_resume_loop.py     # resume tests (need peft, transformers, hydra, mlflow)
 python tests/test_prompt.py [--out prompts.txt] [--model <hf-name>]    # check and print example prompts
 ```
@@ -74,6 +75,22 @@ python evaluate.py eval.adapter=adapters/<run>/epoch_19 eval.games=200   # use t
 | `trained_vs_trained` | what self-play training sees |
 
 Only the vLLM engine is loaded (no trainer), so it is quick: roughly 5 to 10 minutes per 200-game matchup. Results are saved to `eval_results.json` (`eval.out`).
+
+### Scenario evaluation: one model seat, four scripted players
+
+```bash
+python evaluate.py eval.mode=scenarios eval.adapter=adapters/<run>/epoch_19    # or eval.mode=both
+```
+
+`dethy_rl/expert.py` contains exact inference (enumerating the 120 possible role assignments) and scripted players: Cops report their notes honestly and vote for the exact posterior's favourite; the Mafia bluffs and frames a Cop. In each scenario the model plays one role (Sane, Insane, Naive, Paranoid, or Mafia) and everyone else is scripted, for both the base model and the adapter. Reported per scenario: Town win rate, how often the model's vote hits the Mafia, how often it equals the exact reasoner's pick, how many of the claims it makes are true, how many of its own notes it discloses, and its abstention rate.
+
+Things worth knowing when reading the numbers:
+
+- Sane and Insane are equivalent tests (so are Naive and Paranoid): Cops cannot see their own type, and the game is unchanged if every report is flipped. A gap between them means the model is reading "Mafia" / "Not Mafia" literally. The table prints that comparison with a p-value.
+- A Cop's own night-1 result is worth exactly chance (0.25) for every type, so the model can only beat chance on day 1 by using what other players say.
+- Scripted reference (all five seats scripted, `eval.cop_share_prob=1`): Town wins about 88%. If no Cop shares its notes it is about 41%, with only own notes about 46%, and with random votes about 14%.
+- The Mafia scenario uses `eval.mafia_scenario_share_prob` (0.5): with fully honest scripted Cops the Mafia would almost never win, which tells you little.
+- Claim parsing is a best-effort text match; `claims true` is only as good as that parser.
 
 ## Speed and critic options
 

@@ -20,6 +20,7 @@ import dethy_rl.vllm_worker as worker_mod  # noqa: E402
 from dethy_rl.vllm_worker import AgentResponse  # noqa: E402
 import evaluate  # noqa: E402
 
+FLAGS = collections.defaultdict(set)         # scenario -> adapter flags seen on model calls
 FIRST_NIGHT = collections.defaultdict(list)   # matchup -> adapter-flag counts of 5-player night calls
 CURRENT = {"name": None}
 
@@ -48,6 +49,7 @@ class FakeWorker:
         await asyncio.sleep(0)
         if reqs[0].phase == "vote" and len(reqs) == 5:   # day 1: nobody died on the quiet first night
             FIRST_NIGHT[CURRENT["name"]].append(sum(r.adapter for r in reqs))
+        FLAGS[CURRENT['name']].update(r.adapter for r in reqs)
         out = []
         for r in reqs:
             if r.phase in ("dialogue", "think"):
@@ -67,11 +69,13 @@ import dethy_rl.rollout as rollout_mod  # noqa: E402
 _orig_collect = rollout_mod.collect_trajectories
 
 
-async def tagged_collect(worker, cfg, trace=False, epoch=0, adapter_for=None):
+async def tagged_collect(worker, cfg, trace=False, epoch=0, adapter_for=None, scripted=None):
     for name, fn in evaluate.MATCHUPS.items():
         if adapter_for is fn:
             CURRENT["name"] = name
-    return await _orig_collect(worker, cfg, trace=trace, epoch=epoch, adapter_for=adapter_for)
+    if scripted:
+        CURRENT["name"] = f"{scripted['llm_role']}/{'trained' if adapter_for('Cop') else 'base'}"
+    return await _orig_collect(worker, cfg, trace=trace, epoch=epoch, adapter_for=adapter_for, scripted=scripted)
 
 
 rollout_mod.collect_trajectories = tagged_collect
@@ -97,4 +101,17 @@ with tempfile.TemporaryDirectory() as tmp:
         cfg = compose(config_name="config", overrides=["eval.games=8", f"eval.out={out_file}"])
     res = asyncio.run(evaluate.run_eval(cfg))
     assert list(res["results"]) == ["base_vs_base"]
+
+    # scenario mode: one model seat per role, base vs trained
+    with initialize_config_dir(config_dir=str(ROOT / "conf"), version_base=None):
+        cfg = compose(config_name="config", overrides=["eval.mode=scenarios", "eval.scenario_games=12",
+                                                      f"eval.out={out_file}", "eval.adapter=/fake/epoch_1"])
+    res = asyncio.run(evaluate.run_eval(cfg))
+    sc = json.load(open(out_file))["scenarios"]
+    assert set(sc["results"]) == {f"{r}/{v}" for r in ("Sane", "Insane", "Naive", "Paranoid", "Mafia")
+                                  for v in ("base", "trained")}
+    assert 0 <= sc["reference"]["cops"] <= 1 and 0 <= sc["reference"]["mafia"] <= 1
+    for key in sc["results"]:
+        assert FLAGS[key] == {key.endswith("trained")}, (key, FLAGS[key])   # base seats never use the adapter
+    assert sc["results"]["Mafia/base"]["votes"] == 0 and sc["results"]["Sane/base"]["votes"] > 0
 print("eval ok")
