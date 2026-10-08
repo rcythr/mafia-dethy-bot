@@ -28,16 +28,24 @@ class Claim:
     told_mafia: bool
 
 
-LIE_WEIGHT = 0.5   # relative likelihood that the Mafia emits one particular fabricated claim vs a Cop's true one
+# How much less likely is one particular fabricated claim than a Cop's true report? A Cop's only free choice is
+# which of the 4 other players to investigate (its result is then fixed), so a given true claim has probability
+# about 1/4. A Mafia making one up could pick any of 4 targets and either answer, 8 claims, so a given fake
+# claim has probability about 1/8. Hence half the weight. (Matches the scripted Mafia; a cleverer Mafia would
+# differ, so treat 0.5 as an assumption.)
+LIE_WEIGHT = 0.5
 
 
 def _consistent_counts(claims: Sequence[Claim], dead: Sequence[int], me: int, me_is_mafia: bool,
                        lie_weight: float = LIE_WEIGHT) -> Counter:
-    """Weighted count of role assignments compatible with the claims, keyed by who the Mafia is.
+    """Weighted count of the role assignments that fit the claims, keyed by who the Mafia is in each.
 
-    A Cop's claim must be true. The Mafia's claim is unconstrained but each one is less probable than a Cop's
-    true report (a fabricated claim has more ways to be wrong), hence lie_weight per claim. Without that
-    penalty a lone claimant would look like the Mafia just because its claim excludes nothing."""
+    Each assignment is one possible world. A Cop's claim must be true in a world, or that world is dropped. The
+    Mafia's claim can be anything, so it never drops a world. Counting only the surviving worlds would then
+    favour "the speaker is the Mafia" purely for having spoken: if Player_3 alone says "I investigated Player_2:
+    Not Mafia", about half the worlds where Player_3 is a Cop are dropped but none where Player_3 is the Mafia.
+    To correct for that, a world in which the speaker is the Mafia has its weight multiplied by lie_weight
+    for each claim that speaker made."""
     out: Counter = Counter()
     for a in ASSIGNMENTS:
         if (a[me] == "Mafia") != me_is_mafia:
