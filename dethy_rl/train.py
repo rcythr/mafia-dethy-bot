@@ -226,7 +226,7 @@ async def run_training(cfg) -> None:
             stats.update(adv_stats, learning_rate=lr, sec_rollout=t_b - t_a, sec_annotate=t_c - t_b,
                          sec_update=t_d - t_c, num_steps=len(steps))
             stats.update({k: batch[k] for k in (
-                "avg_episode_reward", "town_win_rate", "vote_mafia_rate_sane",
+                "avg_episode_reward", "town_win_rate", "vote_mafia_rate_cops", "vote_mafia_rate_sane",
                 "vote_mafia_rate_other_cops", "vote_nolynch_rate", "avg_dialogue_tokens",
                 "avg_think_tokens")}, avg_steps_per_game=batch["avg_game_len"])
             _safe(mlflow.log_metrics, stats, step=epoch)

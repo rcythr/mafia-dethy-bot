@@ -121,6 +121,9 @@ async def collect_trajectories(worker, cfg, trace: bool = False, epoch: int = 0,
     dlg = [len(s["action_ids"]) for s in steps if s["phase"] == "dialogue"]
     thk = [len(s["action_ids"]) for s in steps if s["phase"] == "think"]
     return dict(
+        # Cops cannot tell their own type, so the symmetric number is the one that matters; the by-type
+        # split below is a diagnostic only
+        vote_mafia_rate_cops=rate({"Sane", "Insane", "Naive", "Paranoid"}),
         vote_mafia_rate_sane=rate({"Sane"}),            # should climb well above chance (~0.25)
         vote_mafia_rate_other_cops=rate({"Insane", "Naive", "Paranoid"}),
         vote_nolynch_rate=rate({"Sane", "Insane", "Naive", "Paranoid"}, idx=2),

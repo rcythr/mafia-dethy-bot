@@ -35,6 +35,7 @@ def summarize(batch) -> dict:
     return dict(
         games=n, town_wins=k, town_win_rate=k / n, town_win_ci95=[lo, hi],
         avg_reward_cops=batch["avg_reward_cops"], avg_reward_mafia=batch["avg_reward_mafia"],
+        vote_mafia_rate_cops=batch["vote_mafia_rate_cops"],
         vote_mafia_rate_sane=batch["vote_mafia_rate_sane"],
         vote_mafia_rate_other_cops=batch["vote_mafia_rate_other_cops"],
         vote_nolynch_rate=batch["vote_nolynch_rate"], steps_per_game=batch["avg_game_len"],
@@ -43,7 +44,7 @@ def summarize(batch) -> dict:
 
 def render_table(results: dict) -> str:
     base = results.get("base_vs_base")
-    head = f"{'matchup':30s} {'Town win rate (95% CI)':26s} {'vs base':>9s} {'Sane vote':>10s} {'other Cops':>11s} {'no-lynch':>9s}"
+    head = f"{'matchup':30s} {'Town win rate (95% CI)':26s} {'vs base':>9s} {'Cop votes->Mafia':>17s} {'no-lynch':>9s}"
     lines = [head, "-" * len(head)]
     for name, r in results.items():
         lo, hi = r["town_win_ci95"]
@@ -51,8 +52,7 @@ def render_table(results: dict) -> str:
         if base is not None and name != "base_vs_base":
             p = f"p={two_proportion_p(r['town_wins'], r['games'], base['town_wins'], base['games']):.3f}"
         lines.append(f"{name:30s} {r['town_win_rate']:.3f} ({lo:.3f}-{hi:.3f})".ljust(57)
-                     + f" {p:>9s} {r['vote_mafia_rate_sane']:>10.3f} {r['vote_mafia_rate_other_cops']:>11.3f}"
-                       f" {r['vote_nolynch_rate']:>9.3f}")
+                     + f" {p:>9s} {r['vote_mafia_rate_cops']:>17.3f} {r['vote_nolynch_rate']:>9.3f}")
     return "\n".join(lines)
 
 
