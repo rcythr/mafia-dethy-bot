@@ -17,11 +17,11 @@ Trains a ~3B language model (`meta-llama/Llama-3.2-3B-Instruct`) to play **Dethy
 
 A game alternates:
 
-1. **Night.** Every Cop investigates one player (privately learns "Mafia"/"Not Mafia" per their sanity). The Mafia kills one other player. Both happen simultaneously.
+1. **Night.** Every Cop investigates one player (privately learns "Mafia"/"Not Mafia" per their sanity). **Nobody is killed on the first night** (the Mafia sleeps and is not prompted). From the second night on, the Mafia also kills one other player at the same time (`env.first_kill_night: 2`).
 2. **Day dialogue.** A random **1-3 rounds**. Each round has a freshly shuffled speaking order, and players speak one at a time, so later speakers see earlier messages.
 3. **Day vote.** Everyone votes for another living player, or for `9` = "no one". The player with the **most votes** is eliminated; if two or more tie for the most, or "no one" leads, nobody is eliminated and the next night begins (`env.lynch_rule: plurality`). An eliminated player's *non-Mafia-ness* is announced (their sanity stays hidden). `env.allow_no_lynch=false` removes the `9` option; `env.lynch_rule=majority` is a stricter variant that needs more than half of the living players.
 
-Town wins when the Mafia is eliminated. The Mafia wins when 2 or fewer players remain (parity). The Mafia kills every night, so abstaining or tying only delays things: with random play about half of games run two days and Town wins about 17%.
+Town wins when the Mafia is eliminated. The Mafia wins when 2 or fewer players remain (parity). From night 2 the Mafia kills every night, so abstaining or tying only delays things. With random play a game has 2 votes about 64% of the time and 3 about 26%, and Town wins about 23%.
 
 ## Layout
 
@@ -173,7 +173,7 @@ Rewards are credited to the player's most recent decision (a night kill lands on
 - **Diagnostics for "is it learning?":** `vote_mafia_rate_sane` (Cops of the truthful Sane type, who do not know that they are Sane; their results are reliable, so this should climb well above the ~0.25 chance level as the model learns which reports to trust), `vote_mafia_rate_other_cops`, `explained_variance`, `clip_frac`, `approx_kl_old`, `kl`, `entropy`, dialogue/think lengths.
 
 **Game design**
-- Added the **Mafia night kill** and **1-3 sequential dialogue rounds with shuffled order** after the first version, so discussion has back-and-forth and the Mafia has agency.
+- Added the **Mafia night kill** (from night 2; night 1 is quiet, as in Dethy) and **1-3 sequential dialogue rounds with shuffled order** after the first version, so discussion has back-and-forth and the Mafia has agency.
 - Players cannot target themselves (kill, investigate or vote). The spec said "alive players", but early transcripts showed half the votes going to the voter themselves, which wastes the signal.
 - A lynch/kill that causes parity pays only the parity reward, not also the -0.2/+0.2 term.
 - The individual Cop terms use hidden information a Cop doesn't have. They're small shaping; zero them if agents start gaming them.

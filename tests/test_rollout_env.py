@@ -83,10 +83,14 @@ for seed in range(300):
     env = DethyEnv(seed=seed)
     while not env.done:
         if env.phase == "night":
-            n = len(env.alive)
-            env.step_night({p: random.choice(env.allowed_targets(p)) for p in env.alive})
-            assert len(env.alive) == n - 1
-            kills += 1
+            n, night = len(env.alive), env.day
+            assert (env.mafia_id in env.acting_players()) == (night >= 2)   # the Mafia sleeps on night 1
+            env.step_night({p: random.choice(env.allowed_targets(p)) for p in env.acting_players()})
+            if night == 1:
+                assert len(env.alive) == n          # nobody dies on the first night
+            else:
+                assert len(env.alive) == n - 1
+                kills += 1
         elif env.phase == "dialogue":
             rounds_seen.add(env.num_rounds)
             seen = []
@@ -142,7 +146,8 @@ print("no-lynch ok", dict(sorted(lengths.items())), outcomes)
 
 # --- plurality rule: most votes wins; a tie for first eliminates no one; majority mode is stricter
 def day_one(seed, **kw):
-    g = DethyEnv(seed=seed, **kw)
+    # first_kill_night=1 keeps the old shape (4 alive on day 1) so these unit tests can use 4 voters
+    g = DethyEnv(seed=seed, first_kill_night=1, **kw)
     g.step_night({p: random.choice(g.allowed_targets(p)) for p in g.alive})
     while g.phase == "dialogue":
         g.step_dialogue(g.acting_players()[0], "x")
@@ -181,3 +186,25 @@ assert "hello" in md and 'Player_1: "' not in md.replace("**Player_1", "")  # cl
 assert "nobody was eliminated (\"no one\" got the most votes)" in md
 assert "The game did not finish." in md
 print("spectator log ok")
+
+
+# --- first night is quiet: only Cops act, nobody dies, and no night-kill reward is paid
+q = DethyEnv(seed=2)
+assert q.mafia_id not in q.acting_players() and len(q.acting_players()) == 4
+rewards, done = q.step_night({p: random.choice(q.allowed_targets(p)) for p in q.acting_players()})
+assert not done and len(q.alive) == 5 and q.phase == "dialogue"
+assert "Nobody was killed in the night." in q.public_transcript()
+assert all(abs(v) < 0.5 for v in rewards.values())       # only the small investigate bonus, no +/-0.2 kill term
+assert "does not kill tonight" in q.render_game_log("t")
+while q.phase == "dialogue":
+    q.step_dialogue(q.acting_players()[0], "x")
+q.step_vote({p: NO_LYNCH for p in q.alive})            # no one eliminated -> night 2: now the Mafia kills
+assert q.phase == "night" and q.day == 2 and q.mafia_id in q.acting_players()
+before = len(q.alive)
+q.step_night({p: random.choice(q.allowed_targets(p)) for p in q.acting_players()})
+assert len(q.alive) == before - 1
+assert "from the second night on" in q.build_prompt(q.alive[0]).lower()
+# the old behaviour is still available
+old = DethyEnv(seed=2, first_kill_night=1)
+assert old.mafia_id in old.acting_players()
+print("quiet first night ok")

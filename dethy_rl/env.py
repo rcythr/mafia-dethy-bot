@@ -20,7 +20,7 @@ ROLES
 - Only the Mafia knows exactly who they are. The Mafia knows they are the Mafia. A Cop knows they are a Cop but does NOT know which sanity type they are, so a Cop can never be sure whether their own results are true, reversed or meaningless. Nobody's role or type is revealed unless a player chooses to say it, and players may lie.
 
 HOW THE GAME RUNS
-1. Night: every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their sanity). At the same time the Mafia kills one other player, who is out of the game.
+1. Night: every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their sanity). From the second night on, the Mafia also kills one other player at the same time, who is out of the game. Nobody is killed on the first night.
 2. Day discussion: the living players talk in 1 to 3 rounds. In each round everyone speaks once, in a random order, and can read everything said so far.
 3. Day vote: every living player votes for one living player to eliminate{NOLYNCH_RULE}. {ELIM_RULE} Whoever is eliminated is announced as having been or not been the Mafia.
 Then the next night begins.
@@ -49,7 +49,7 @@ HOW TO ANSWER
 
 _COMPACT_TEMPLATE = """Dethy Mafia, a social deduction game with 5 players (Player_0 to Player_4): 1 Mafia and 4 Cops. The Cops win by eliminating the Mafia; the Mafia wins when only 2 players are alive.
 The four Cops have four different hidden types, and no Cop knows their own: Sane (investigations are true), Insane (reversed), Naive (always "Not Mafia"), Paranoid (always "Mafia"). Only the Mafia knows exactly who they are. Your Private Role says "Mafia" or "Cop". Anyone may lie about their role or results. Everything before the line starting "You are Player_" is public.
-Each night every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their type), and the Mafia kills one other player. Each day there are 1 to 3 discussion rounds (everyone speaks once per round, random order), then everyone votes for another living player{NOLYNCH_RULE}. {ELIM_RULE}
+Each night every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their type), and from the second night on the Mafia also kills one other player (nobody is killed on the first night). Each day there are 1 to 3 discussion rounds (everyone speaks once per round, random order), then everyone votes for another living player{NOLYNCH_RULE}. {ELIM_RULE}
 Cops: your results are clues, not facts. Compare notes: the Cops' types differ, so their reports can contradict each other. Vote for who you think is the Mafia. Mafia: blend in, deflect suspicion, kill whoever might expose you. Nobody can investigate, kill or vote for themselves.
 Answers: Night and Vote: only a single digit, the ID of a living player other than yourself.{NOLYNCH_ANSWER} Discussion: one or two short sentences (about 40 words), without a "Player_N:" prefix; nobody investigates or kills during the day.
 """
@@ -113,7 +113,7 @@ def clean_message(text: str) -> str:
 class DethyEnv:
     def __init__(self, seed: Optional[int] = None, rewards: Optional[dict] = None,
                  min_rounds: int = 1, max_rounds: int = 3, allow_no_lynch: bool = True,
-                 lynch_rule: str = "plurality", rules_style: str = "full"):
+                 lynch_rule: str = "plurality", rules_style: str = "full", first_kill_night: int = 2):
         self.rng = random.Random(seed)
         self.rw = RewardConfig(**(rewards or {}))
         self.min_rounds, self.max_rounds = min_rounds, max_rounds
@@ -121,6 +121,7 @@ class DethyEnv:
         assert lynch_rule in ("majority", "plurality"), lynch_rule
         self.lynch_rule = lynch_rule
         self.rules_style = rules_style
+        self.first_kill_night = first_kill_night  # the Mafia may not kill before this night
         self.reset()
 
     # ------------------------------------------------------------------ state
@@ -161,7 +162,12 @@ class DethyEnv:
             return []
         if self.phase == "dialogue":
             return self.speakers[:1]
+        if self.phase == "night" and not self._kill_tonight():
+            return [p for p in self.alive if p != self.mafia_id]  # the Mafia sleeps
         return list(self.alive)
+
+    def _kill_tonight(self) -> bool:
+        return self.day >= self.first_kill_night
 
     def private_role(self, player_id: int) -> str:
         """What the player is told about themselves: the Mafia knows it is the Mafia; a Cop only
@@ -265,6 +271,12 @@ class DethyEnv:
                                + " the Mafia)"))
             if t == mafia:
                 r[pid] += self.rw.investigate_mafia_bonus
+
+        if not self._kill_tonight():  # e.g. night 1: nobody dies
+            self._md.append(f"- {self._who(mafia)} does not kill tonight (no kills on night {self.day}).")
+            self.transcript.append("Nobody was killed in the night.")
+            self._begin_day()
+            return dict(r), False
 
         victim = targets.get(mafia)
         if victim not in self.alive or victim == mafia:

@@ -35,6 +35,7 @@ env:
   allow_no_lynch: true       # players may vote 9 = "no one"; if it wins the vote nobody is eliminated
   lynch_rule: plurality      # plurality: most votes wins, a tie for first elects no one; majority: need more than half of the living players
   rules_style: full          # full | compact (about half the tokens: faster training steps, less hand-holding)
+  first_kill_night: 2        # the Mafia cannot kill before this night (Dethy: nobody dies on night 1)
   think_tokens: 0            # >0: private reasoning (max tokens) before each night action and vote
   rewards:                      # see RewardConfig in dethy_rl/env.py
     lynch_mafia: 1.0

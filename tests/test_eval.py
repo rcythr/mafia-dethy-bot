@@ -46,7 +46,7 @@ class FakeWorker:
 
     async def generate_agent_responses(self, reqs):
         await asyncio.sleep(0)
-        if reqs[0].phase == "night" and len(reqs) == 5:
+        if reqs[0].phase == "vote" and len(reqs) == 5:   # day 1: nobody died on the quiet first night
             FIRST_NIGHT[CURRENT["name"]].append(sum(r.adapter for r in reqs))
         out = []
         for r in reqs:

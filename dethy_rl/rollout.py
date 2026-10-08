@@ -16,7 +16,8 @@ async def run_lobby(lobby_id: int, worker, cfg, sem: asyncio.Semaphore, trace: b
         env = DethyEnv(seed=(cfg.rollout.seed * 1_000_003 + epoch) * 100_003 + lobby_id, rewards=dict(cfg.env.rewards),
                        min_rounds=cfg.env.min_dialogue_rounds, max_rounds=cfg.env.max_dialogue_rounds,
                        allow_no_lynch=cfg.env.allow_no_lynch, lynch_rule=cfg.env.lynch_rule,
-                       rules_style=cfg.env.rules_style if hasattr(cfg.env, "rules_style") else "full")
+                       rules_style=cfg.env.rules_style if hasattr(cfg.env, "rules_style") else "full",
+                       first_kill_night=cfg.env.first_kill_night if hasattr(cfg.env, "first_kill_night") else 2)
 
         def uses_adapter(pid: int) -> bool:
             return True if adapter_for is None else adapter_for("Mafia" if env.roles[pid] == "Mafia" else "Cop")
