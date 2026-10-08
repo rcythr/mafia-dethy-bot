@@ -98,8 +98,11 @@ def check_rules_styles():
     full, compact = build_rules(True, "plurality", "full"), build_rules(True, "plurality", "compact")
     assert len(compact) < 0.5 * len(full)
     for text in (full, compact):
+        assert "tells you nothing" not in text and "meaningless" not in text   # constant reports ARE evidence
         for must in ("Sane", "Insane", "Naive", "Paranoid", "Paranoid", "9", "tie", "single digit"):
             assert must in text, must
+    assert "says nothing about its target by itself" in full and "is still evidence" in full
+    assert "reveal who those two are" in compact
     e = DethyEnv(seed=3, rules_style="compact", lynch_rule="plurality")
     assert e.build_messages(0)[0]["content"] == compact.strip()
     check_invariants(e)

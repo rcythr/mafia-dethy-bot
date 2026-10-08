@@ -15,9 +15,10 @@ ROLES
 - Each Cop has a hidden sanity type, and the four Cops have four different types. The type decides what their investigations tell them:
   * Sane: sees the truth ("Mafia" if the target is the Mafia, otherwise "Not Mafia").
   * Insane: sees the opposite of the truth (the Mafia looks like "Not Mafia", everyone else looks like "Mafia").
-  * Naive: always sees "Not Mafia", whoever the target is, so a Naive result tells you nothing.
-  * Paranoid: always sees "Mafia", whoever the target is, so a Paranoid result tells you nothing.
-- Only the Mafia knows exactly who they are. The Mafia knows they are the Mafia. A Cop knows they are a Cop but does NOT know which sanity type they are, so a Cop can never be sure whether their own results are true, reversed or meaningless. Nobody's role or type is revealed unless a player chooses to say it, and players may lie.
+  * Naive: always sees "Not Mafia", whoever the target is.
+  * Paranoid: always sees "Mafia", whoever the target is.
+  A Naive or Paranoid result says nothing about its target by itself, but it is still evidence: a Cop who gets the same answer for every player is probably Naive or Paranoid, and knowing who they are lets you work out the other Cops' types and which of their reports to trust.
+- Only the Mafia knows exactly who they are. The Mafia knows they are the Mafia. A Cop knows they are a Cop but does NOT know which sanity type they are, so a Cop can never be sure whether their own results are true, reversed or uninformative about the target. Nobody's role or type is revealed unless a player chooses to say it, and players may lie.
 
 HOW THE GAME RUNS
 1. Night: every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their sanity). From the second night on, the Mafia also kills one other player at the same time, who is out of the game. Nobody is killed on the first night.
@@ -50,7 +51,7 @@ HOW TO ANSWER
 _COMPACT_TEMPLATE = """Dethy Mafia, a social deduction game with 5 players (Player_0 to Player_4): 1 Mafia and 4 Cops. The Cops win by eliminating the Mafia; the Mafia wins when only 2 players are alive.
 The four Cops have four different hidden types, and no Cop knows their own: Sane (investigations are true), Insane (reversed), Naive (always "Not Mafia"), Paranoid (always "Mafia"). Only the Mafia knows exactly who they are. Your Private Role says "Mafia" or "Cop". Anyone may lie about their role or results. Everything before the line starting "You are Player_" is public.
 Each night every Cop investigates one player and privately learns "Mafia" or "Not Mafia" (according to their type), and from the second night on the Mafia also kills one other player (nobody is killed on the first night). Each day there are 1 to 3 discussion rounds (everyone speaks once per round, random order), then everyone votes for another living player{NOLYNCH_RULE}. {ELIM_RULE}
-Cops: your results are clues, not facts. Compare notes: the Cops' types differ, so their reports can contradict each other. Vote for who you think is the Mafia. Mafia: blend in, deflect suspicion, kill whoever might expose you. Nobody can investigate, kill or vote for themselves.
+Cops: your results are clues, not facts. Compare notes: the Cops' types differ, so their reports can contradict each other. Even the constant answers of a Naive or Paranoid Cop help: they reveal who those two are, which pins down the other Cops' types. Vote for who you think is the Mafia. Mafia: blend in, deflect suspicion, kill whoever might expose you. Nobody can investigate, kill or vote for themselves.
 Answers: Night and Vote: only a single digit, the ID of a living player other than yourself.{NOLYNCH_ANSWER} Discussion: one or two short sentences (about 40 words), without a "Player_N:" prefix; nobody investigates or kills during the day.
 """
 
@@ -142,6 +143,8 @@ class DethyEnv:
         self.transcript.append(f"\n=== Night {self.day} ===\n")
         # omniscient spectator log (never shown to agents): everything incl. true roles, results, votes
         self._md: List[str] = []
+        self.investigations: List[Tuple[int, int, int, bool]] = []   # (night, investigator, target, told_mafia)
+        self.messages: List[Tuple[int, int, str]] = []               # (day, speaker, cleaned text)
         self.fate: Dict[int, str] = {}
         self.end_note = ""
 
@@ -265,6 +268,7 @@ class DethyEnv:
                 t = self.rng.choice(self.allowed_targets(pid))
             seen = "Mafia" if self._sanity_result(self.roles[pid], t) else "Not Mafia"
             self.private_notes[pid].append(f"Night {self.day}: you investigated Player_{t}: {seen}.")
+            self.investigations.append((self.day, pid, t, seen == "Mafia"))
             truthful = (seen == "Mafia") == (t == mafia)
             self._md.append(f"- {self._who(pid)} investigated {self._who(t)} and was told **{seen}**"
                             + ("" if truthful else " (misleading: that player " + ("is not" if seen == "Mafia" else "is")
@@ -300,6 +304,7 @@ class DethyEnv:
         assert self.phase == "dialogue" and self.speakers and self.speakers[0] == player_id
         msg = clean_message(message) or "..."
         self.transcript.append(f"\nPlayer_{player_id}: {msg}")  # blank line between messages so viewers show separate paragraphs
+        self.messages.append((self.day, player_id, msg))
         self._md.append(f"\n- **{self._who(player_id)}**: {msg}")
         self.speakers.pop(0)
         if not self.speakers:
