@@ -83,3 +83,38 @@ for n in ("emb.weight", "lm.weight", "lm.bias"):
 after = ppo_update(agent, opt, steps, cfg)
 assert all(k in after for k in ("policy_loss", "kl", "entropy", "clip_frac", "approx_kl_old"))
 print("train logic ok", {k: round(v, 3) for k, v in after.items()})
+
+
+# --- OOM fallback: a step that runs out of memory without checkpointing turns it on and is retried
+class OomAgent(FakeAgent):
+    def __init__(self):
+        super().__init__()
+        self.checkpointing = False
+
+    def enable_gradient_checkpointing(self):
+        self.checkpointing = True
+
+    def forward(self, ids, num_action_tokens=0, value_pos=-1, compute_ref=True):
+        if not self.checkpointing:
+            raise torch.cuda.OutOfMemoryError("CUDA out of memory (simulated)")
+        return super().forward(ids, num_action_tokens, value_pos, compute_ref)
+
+
+oom = OomAgent()
+oom_opt = torch.optim.AdamW(oom.trainable_parameters(), lr=1e-2)
+steps2 = [dict(s) for s in steps]
+ppo_update(oom, oom_opt, steps2, cfg)
+assert oom.checkpointing is True
+
+class AlwaysOom(OomAgent):
+    def enable_gradient_checkpointing(self):
+        self.checkpointing = True
+    def forward(self, *a, **k):
+        raise torch.cuda.OutOfMemoryError("still out of memory")
+
+try:
+    ppo_update(AlwaysOom(), torch.optim.AdamW(AlwaysOom().trainable_parameters(), lr=1e-2), [dict(s) for s in steps], cfg)
+    raise AssertionError("an OOM with checkpointing already on must propagate")
+except torch.cuda.OutOfMemoryError:
+    pass
+print("oom fallback ok")

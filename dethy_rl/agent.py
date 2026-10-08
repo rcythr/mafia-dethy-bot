@@ -16,9 +16,12 @@ class DethyAgent(nn.Module):
             cfg.model.name, torch_dtype=torch.bfloat16,
             device_map={"": 0},
         )
-        if cfg.model.get("gradient_checkpointing", True):  # saves memory, costs ~1/3 extra compute
-            base.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-            base.enable_input_require_grads()
+        self._base = base
+        self.checkpointing = False
+        # true: on from the start; false: off; auto: start off (faster) and switch on if a step runs out of memory.
+        # Checkpointing saves activation memory but costs ~1/3 extra compute.
+        if cfg.model.get("gradient_checkpointing", True) is True:
+            self.enable_gradient_checkpointing()
         base.config.use_cache = False
         targets = select_lora_targets(base, cfg.lora.target_modules)
         print(f"LoRA targets: {len(targets)} entries")
@@ -32,6 +35,12 @@ class DethyAgent(nn.Module):
         self.value_head = nn.Linear(hidden, 1, dtype=torch.float32).to(base.device)
         nn.init.zeros_(self.value_head.weight)
         nn.init.zeros_(self.value_head.bias)
+
+    def enable_gradient_checkpointing(self) -> None:
+        if not self.checkpointing:
+            self._base.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+            self._base.enable_input_require_grads()
+            self.checkpointing = True
 
     def trainable_parameters(self):
         return [p for p in self.parameters() if p.requires_grad]

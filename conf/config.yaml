@@ -26,7 +26,7 @@ training:
   ppo_epochs: 1            # passes over each rollout batch
   grad_accum_steps: 8      # trajectory steps per optimizer step (batch size is 1 sequence)
   max_grad_norm: 1.0
-  value_lr_mult: 1.0       # critic head LR = learning_rate x this (the schedule applies to both); try 10 if explained_variance stays low
+  value_lr_mult: 10.0      # critic head LR = learning_rate x this (the schedule applies to both); the first run's explained_variance stayed at 0.1-0.4 with 1.0
   masked_vote_logprobs: true  # train-time vote log-probs use the same alive-digit mask as sampling
 
 env:
@@ -51,7 +51,7 @@ model:
   name: google/gemma-4-E4B-it
   max_tokens: 96           # max new tokens for a dialogue turn
   max_model_len: 4096
-  gradient_checkpointing: true  # set false on big-memory GPUs (e.g. DGX Spark): ~25% faster training steps, more activation memory
+  gradient_checkpointing: auto  # true | false | auto. auto starts off (~25% faster steps) and turns it on if a step runs out of memory
   chat_template_kwargs:     # extra chat-template args; templates ignore ones they don't use. Gemma 4 / Qwen3: turn built-in thinking off (we run our own scratchpad)
     enable_thinking: false
   use_chat_template: true  # wrap prompts in the model's chat template (rules = system, rest = user)

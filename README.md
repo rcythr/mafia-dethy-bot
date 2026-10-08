@@ -79,9 +79,9 @@ Only the vLLM engine is loaded (no trainer), so it is quick: roughly 5 to 10 min
 
 Measured on the DGX Spark (32 games/epoch, ~700 steps): rollout ~40 s, value pass ~260 s, policy update ~1,500 s. The trainer dominates, so:
 
-- `model.gradient_checkpointing=false` removes ~25% of update compute (more activation memory; test before an unattended run).
+- `model.gradient_checkpointing` is `auto` by default: it starts off (removes ~25% of update compute) and, if a step runs out of memory, switches checkpointing on and retries that step. Set `true` to force it on or `false` to never switch.
 - `env.rules_style=compact` shrinks the rules prompt to ~40% of its size (about 600 fewer tokens per step, so roughly 25% cheaper steps). It also removes the worked example and most strategy hints, so evaluate it with `evaluate.py` before trusting it.
-- `training.value_lr_mult=10` gives the critic head its own 10x learning rate (the base run's `explained_variance` stayed at 0.1 to 0.4).
+- `training.value_lr_mult` (default 10) gives the critic head its own, larger learning rate (the first run's `explained_variance` stayed at 0.1 to 0.4 with 1).
 
 ## Resuming a run
 

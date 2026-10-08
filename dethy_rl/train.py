@@ -119,6 +119,26 @@ def ppo_step_loss(agent, step: Dict, cfg, train_policy: bool = True):
                        approx_kl_old=(old_logp - logp).mean().item())
 
 
+def _step_with_oom_fallback(agent, optimizer, step, cfg, train_policy: bool, accum: int) -> Dict[str, float]:
+    """One forward/backward. If it runs out of memory and gradient checkpointing is still off, turn it on and
+    retry (so model.gradient_checkpointing=auto can start fast and stay safe unattended)."""
+    try:
+        loss, stats = ppo_step_loss(agent, step, cfg, train_policy)
+        (loss / accum).backward()
+        return stats
+    except torch.cuda.OutOfMemoryError:
+        if getattr(agent, "checkpointing", True) or not hasattr(agent, "enable_gradient_checkpointing"):
+            raise
+        print("warning: out of memory without gradient checkpointing; enabling it and retrying this step")
+        optimizer.zero_grad(set_to_none=True)   # drop partial gradients from the failed attempt
+        gc.collect()
+        torch.cuda.empty_cache()
+        agent.enable_gradient_checkpointing()
+        loss, stats = ppo_step_loss(agent, step, cfg, train_policy)
+        (loss / accum).backward()
+        return stats
+
+
 def ppo_update(agent, optimizer, steps: List[Dict], cfg, train_policy: bool = True) -> Dict[str, float]:
     agent.train()
     accum = cfg.training.grad_accum_steps
@@ -128,8 +148,7 @@ def ppo_update(agent, optimizer, steps: List[Dict], cfg, train_policy: bool = Tr
         random.shuffle(steps)
         optimizer.zero_grad(set_to_none=True)
         for i, s in enumerate(steps, 1):
-            loss, stats = ppo_step_loss(agent, s, cfg, train_policy)
-            (loss / accum).backward()
+            stats = _step_with_oom_fallback(agent, optimizer, s, cfg, train_policy, accum)
             for k, v in stats.items():
                 sums[k] += v
             n += 1
